@@ -207,7 +207,23 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                     known_master_categories.add(c)
                 except: pass
 
+    # Create a transit folder WITHIN the PST to avoid cross-store resource issues
+    # and still fix the 'Draft' status via the Move() method.
+    try:
+        temp_folder_name = "_Temp_Migration_"
+        temp_folder = None
+        for folder in root_folder.Folders:
+            if folder.Name == temp_folder_name:
+                temp_folder = folder
+                break
+        if not temp_folder:
+            temp_folder = root_folder.Folders.Add(temp_folder_name)
+    except Exception as e:
+        logging.warning(f"Could not create temp folder in PST, using target: {e}")
+        temp_folder = target_folder
+
     # Open MBOX
+    import mailbox
     logging.info(f"Opening MBOX file: {mbox_path}")
     mbox = mailbox.mbox(mbox_path)
     
@@ -221,9 +237,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     errors = 0
     start_time = time.time()
     
-    # Iterate through MBOX
+    # Effective limit calculation
     effective_limit = (start_at + limit) if limit else None
     
+    # Iterate through MBOX
     for i, message in enumerate(mbox):
         if effective_limit and i >= effective_limit:
             logging.info(f"Session limit of {limit} messages reached (Index {i}). Stopping.")
@@ -233,6 +250,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             count = i + 1
             continue
             
+        mail = None # Initialize to ensure cleanup
         try:
             # Extract basic info
             subject = decode_mime_header(message['subject']) or "(No Subject)"
@@ -265,7 +283,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             if categories:
                 ensure_categories_exist(categories)
 
-            # Création du message dans la Boîte de réception (temp_folder)
+            # Création du message dans le dossier de transit
             # Cette méthode "Create -> Move" est la seule fiable pour supprimer l'état Brouillon.
             mail = temp_folder.Items.Add(0) # 0 = olMailItem
             
@@ -377,7 +395,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             set_item_properties(mail, date_val, sender_name=sender)
             mail.Save()
 
-            # DEPLACEMENT vers le PST cible
+            # DEPLACEMENT FINAL
             # Cela cristallise le statut "Envoyé" et retire définitivement "Brouillon"
             if temp_folder != target_folder:
                 mail.Move(target_folder)
@@ -388,6 +406,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                 rate = (count - start_at) / elapsed if elapsed > 0 else 0
                 logging.info(f"Processed {count} messages... ({rate:.2f} msgs/sec)")
                 save_state(count)
+            
+            # Micro-pause every 10 messages to avoid resource exhaustion
+            if count % 10 == 0:
+                time.sleep(0.1)
                 
         except Exception as e:
             errors += 1
@@ -396,6 +418,15 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                 logging.error("Too many errors, stopping.")
                 break
             continue
+        finally:
+            # Explicitly release the COM object
+            mail = None
+
+    # Cleanup temp folder if empty
+    try:
+        if temp_folder.Items.Count == 0:
+            temp_folder.Delete()
+    except: pass
 
     save_state(count)
     logging.info(f"Migration completed!")
