@@ -192,6 +192,21 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     except:
         temp_folder = target_folder # Fallback
 
+    # Master Category List Caching
+    known_master_categories = set()
+    try:
+        for cat in namespace.Categories:
+            known_master_categories.add(cat.Name)
+    except: pass
+    
+    def ensure_categories_exist(cat_list):
+        for c in cat_list:
+            if c and c not in known_master_categories:
+                try:
+                    namespace.Categories.Add(c)
+                    known_master_categories.add(c)
+                except: pass
+
     # Open MBOX
     logging.info(f"Opening MBOX file: {mbox_path}")
     mbox = mailbox.mbox(mbox_path)
@@ -207,12 +222,11 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     start_time = time.time()
     
     # Iterate through MBOX
-    # For large MBOX, we avoid loading everything.
-    # We iterate and skip until start_at.
+    effective_limit = (start_at + limit) if limit else None
     
     for i, message in enumerate(mbox):
-        if limit and i >= limit:
-            logging.info(f"Limit of {limit} messages reached. Stopping.")
+        if effective_limit and i >= effective_limit:
+            logging.info(f"Session limit of {limit} messages reached (Index {i}). Stopping.")
             break
 
         if i < start_at:
@@ -233,18 +247,23 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                 except: pass
 
             # X-Gmail-Labels
-            labels_raw = message.get('X-Gmail-Labels', '')
+            # USE get_all to capture multiple headers if present
+            labels_headers = message.get_all('X-Gmail-Labels', [])
             categories = []
-            if labels_raw:
-                # Decode headers FIRST (handles MIME encoded characters like accents)
-                # This fixes labels appearing like =?UTF-8?Q?Messages...?=
-                labels_decoded = decode_mime_header(labels_raw)
-                # Then split by comma
-                categories = [l.strip() for l in labels_decoded.split(',') if l.strip()]
-                
-                # Optional: Add to master list (can be slow if done every time, maybe every 100)
-                if count % 100 == 0:
-                    add_to_master_categories(namespace, categories)
+            
+            for distinct_header in labels_headers:
+                if distinct_header:
+                    decoded = decode_mime_header(distinct_header)
+                    # Split by comma
+                    parts = [l.strip() for l in decoded.split(',') if l.strip()]
+                    categories.extend(parts)
+            
+            # De-duplicate
+            categories = list(set(categories))
+            
+            # Ensure they exist in Master List immediately
+            if categories:
+                ensure_categories_exist(categories)
 
             # Création du message dans la Boîte de réception (temp_folder)
             # Cette méthode "Create -> Move" est la seule fiable pour supprimer l'état Brouillon.

@@ -16,3 +16,46 @@
 2026-01-15 14:41:00,636 - INFO - Total messages: 35
 2026-01-15 14:41:00,638 - INFO - Errors: 0
 2026-01-15 14:41:00,638 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 14:53:51,119 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 14:53:51,136 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-15 14:55:37,585 - INFO - Limit of 50 messages reached. Stopping.
+2026-01-15 14:55:37,586 - INFO - Migration completed!
+2026-01-15 14:55:37,586 - INFO - Total messages: 50
+2026-01-15 14:55:37,588 - INFO - Errors: 0
+2026-01-15 14:55:37,588 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:20:58,573 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:20:58,600 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-15 15:20:58,601 - INFO - Resuming from message 50...
+2026-01-15 15:22:39,337 - INFO - Limit of 50 messages reached. Stopping.
+2026-01-15 15:22:39,338 - INFO - Migration completed!
+2026-01-15 15:22:39,338 - INFO - Total messages: 50
+2026-01-15 15:22:39,338 - INFO - Errors: 0
+2026-01-15 15:22:39,338 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:26:14,116 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:26:14,144 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-15 15:27:59,077 - INFO - Limit of 50 messages reached. Stopping.
+2026-01-15 15:27:59,078 - INFO - Migration completed!
+2026-01-15 15:27:59,079 - INFO - Total messages: 50
+2026-01-15 15:27:59,079 - INFO - Errors: 0
+2026-01-15 15:27:59,081 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:30:04,818 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:30:04,862 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-15 15:30:04,864 - INFO - Resuming from message 50...
+2026-01-15 15:31:46,426 - INFO - Limit of 50 messages reached. Stopping.
+2026-01-15 15:31:46,426 - INFO - Migration completed!
+2026-01-15 15:31:46,427 - INFO - Total messages: 50
+2026-01-15 15:31:46,429 - INFO - Errors: 0
+2026-01-15 15:31:46,429 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:47:18,385 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:47:18,429 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-15 15:47:18,430 - INFO - Resuming from message 50...
+2026-01-15 15:49:02,396 - INFO - Processed 100 messages... (0.48 msgs/sec)
+2026-01-15 15:59:53,949 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-15 15:59:53,998 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-15 15:59:53,999 - INFO - Resuming from message 50...
+2026-01-15 16:01:39,555 - INFO - Processed 100 messages... (0.47 msgs/sec)
+2026-01-15 16:01:45,990 - INFO - Limit of 150 messages reached. Stopping.
+2026-01-15 16:01:45,990 - INFO - Migration completed!
+2026-01-15 16:01:45,990 - INFO - Total messages: 150
+2026-01-15 16:01:45,991 - INFO - Errors: 0
+2026-01-15 16:01:45,991 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
