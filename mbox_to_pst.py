@@ -9,6 +9,7 @@ import json
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 import datetime
+import mimetypes
 
 # Configure logging
 logging.basicConfig(
@@ -30,29 +31,42 @@ def decode_mime_header(header_value):
         result = []
         for part, encoding in decoded_parts:
             if isinstance(part, bytes):
+                # Try UTF-8 first with strict errors to trigger fallback if invalid
                 try:
-                    result.append(part.decode(encoding or 'utf-8', errors='replace'))
+                    result.append(part.decode(encoding or 'utf-8', errors='strict'))
                 except:
-                    result.append(part.decode('latin-1', errors='replace'))
+                    # Fallback to latin-1 or windows-1252 if UTF-8 fails
+                    try:
+                        result.append(part.decode('latin-1', errors='replace'))
+                    except:
+                        result.append(part.decode('utf-8', errors='replace'))
             else:
                 result.append(part)
         return "".join(result)
     except:
         return str(header_value)
 
-def set_item_properties(mail_item, date_obj):
+def set_item_properties(mail_item, date_obj, sender_name=""):
     """
-    Uses PropertyAccessor to set the sent/received date and message flags.
-    Property tags:
-    0x00390040: PR_CLIENT_SUBMIT_TIME
-    0x0E060040: PR_MESSAGE_DELIVERY_TIME
-    0x0E070003: PR_MESSAGE_FLAGS
+    Uses PropertyAccessor to set the sent/received date, message flags, and SENDER info.
     """
     try:
+        # Time Properties
         PR_CLIENT_SUBMIT_TIME = "http://schemas.microsoft.com/mapi/proptag/0x00390040"
         PR_MESSAGE_DELIVERY_TIME = "http://schemas.microsoft.com/mapi/proptag/0x0E060040"
+        
+        # Flags (Ready/Read)
         PR_MESSAGE_FLAGS = "http://schemas.microsoft.com/mapi/proptag/0x0E070003"
         
+        # Sender Properties (Force the "From" field)
+        PR_SENDER_NAME = "http://schemas.microsoft.com/mapi/proptag/0x0C1A001F"
+        PR_SENDER_EMAIL_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x0C1F001F"
+        PR_SENDER_ADDRTYPE = "http://schemas.microsoft.com/mapi/proptag/0x0C1E001F"
+        
+        PR_SENT_REPRESENTING_NAME = "http://schemas.microsoft.com/mapi/proptag/0x0042001F"
+        PR_SENT_REPRESENTING_EMAIL_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x0065001F"
+        PR_SENT_REPRESENTING_ADDRTYPE = "http://schemas.microsoft.com/mapi/proptag/0x0064001F"
+
         prop_accessor = mail_item.PropertyAccessor
         
         # Set Dates
@@ -61,10 +75,31 @@ def set_item_properties(mail_item, date_obj):
             prop_accessor.SetProperty(PR_MESSAGE_DELIVERY_TIME, date_obj)
         
         # Set Flags: MSGFLAG_READ (0x1) and clear MSGFLAG_UNSENT (0x8)
-        # Value 1 means 'Read' and not 'Unsent'.
         prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 1)
+
+        # Set Sender Info manually if available
+        if sender_name:
+            # Extract email if possible "Name <email>"
+            email_addr = sender_name
+            name = sender_name
+            if "<" in sender_name and ">" in sender_name:
+                import re
+                match = re.search(r'<([^>]+)>', sender_name)
+                if match:
+                    email_addr = match.group(1)
+                    # Clean name
+                    name = sender_name.split("<")[0].strip().strip('"')
+
+            prop_accessor.SetProperty(PR_SENDER_NAME, name)
+            prop_accessor.SetProperty(PR_SENDER_EMAIL_ADDRESS, email_addr)
+            prop_accessor.SetProperty(PR_SENDER_ADDRTYPE, "SMTP")
+            
+            prop_accessor.SetProperty(PR_SENT_REPRESENTING_NAME, name)
+            prop_accessor.SetProperty(PR_SENT_REPRESENTING_EMAIL_ADDRESS, email_addr)
+            prop_accessor.SetProperty(PR_SENT_REPRESENTING_ADDRTYPE, "SMTP")
         
-    except Exception:
+    except Exception as e:
+        # logging.warning(f"Error setting MAPI properties: {e}")
         pass
 
 def save_state(count):
@@ -92,7 +127,7 @@ def add_to_master_categories(namespace, category_names):
     except Exception as e:
         logging.warning(f"Could not update Master Category List: {e}")
 
-def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True):
+def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, limit=None):
     if not os.path.exists(mbox_path):
         logging.error(f"MBOX file not found at {mbox_path}")
         return
@@ -176,6 +211,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True):
     # We iterate and skip until start_at.
     
     for i, message in enumerate(mbox):
+        if limit and i >= limit:
+            logging.info(f"Limit of {limit} messages reached. Stopping.")
+            break
+
         if i < start_at:
             count = i + 1
             continue
@@ -224,39 +263,74 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True):
             body_text = ""
             if message.is_multipart():
                 for part in message.walk():
+                    if part.get_content_maintype() == 'multipart':
+                        continue
+
                     content_type = part.get_content_type()
-                    content_disposition = str(part.get("Content-Disposition"))
-                    if content_type == "text/plain" and "attachment" not in content_disposition:
+                    content_disposition = str(part.get("Content-Disposition", ""))
+                    filename = part.get_filename()
+                    content_id = part.get('Content-ID')
+                    
+                    # Determine if this part is a body or an attachment/inline image
+                    # Default: Body if text and no filename/disposition
+                    is_attachment = False
+                    
+                    if "attachment" in content_disposition:
+                        is_attachment = True
+                    elif filename:
+                         # Has a filename, usually an attachment (even if inline)
+                        is_attachment = True
+                    elif content_type not in ("text/plain", "text/html"):
+                        # Info not text, assume attachment (e.g. image without headers)
+                        is_attachment = True
+                    
+                    # Handle Body
+                    if not is_attachment and content_type in ("text/plain", "text/html"):
                         try:
                             payload = part.get_payload(decode=True)
                             charset = part.get_content_charset() or 'utf-8'
-                            body_text += payload.decode(charset, errors='replace')
+                            decoded = payload.decode(charset, errors='replace')
+                            if content_type == "text/html":
+                                body_html += decoded
+                            else:
+                                body_text += decoded
                         except: pass
-                    elif content_type == "text/html" and "attachment" not in content_disposition:
-                        try:
-                            payload = part.get_payload(decode=True)
-                            charset = part.get_content_charset() or 'utf-8'
-                            body_html += payload.decode(charset, errors='replace')
-                        except: pass
-                    elif "attachment" in content_disposition or part.get_filename():
-                        filename = part.get_filename()
+                    
+                    # Handle Attachment/Inline
+                    else:
+                        # Ensure we have a filename
                         if filename:
                             filename = decode_mime_header(filename)
-                            try:
-                                payload = part.get_payload(decode=True)
-                                if payload:
-                                    # Create a unique temporary directory for this specific message's attachments
-                                    # to ensure we can use the ACTUAL filename without collisions.
-                                    with tempfile.TemporaryDirectory() as temp_dir:
-                                        temp_path = os.path.join(temp_dir, filename)
-                                        with open(temp_path, "wb") as f:
-                                            f.write(payload)
+                        else:
+                            # Generate name if missing
+                            ext = mimetypes.guess_extension(content_type) or ".dat"
+                            filename = f"attachment_{os.urandom(4).hex()}{ext}"
+                            
+                        try:
+                            payload = part.get_payload(decode=True)
+                            if payload:
+                                with tempfile.TemporaryDirectory() as temp_dir:
+                                    temp_path = os.path.join(temp_dir, filename)
+                                    with open(temp_path, "wb") as f:
+                                        f.write(payload)
+                                    
+                                    # Add to Outlook
+                                    attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
+                                    
+                                    # Handle Content-ID for inline images
+                                    # CID allows <img src="cid:foo"> to work
+                                    if content_id:
+                                        # Remove <>
+                                        cid_clean = content_id.strip('<>')
+                                        try:
+                                            # PR_ATTACH_CONTENT_ID = 0x3712001F
+                                            attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
+                                        except: pass
                                         
-                                        # mail.Attachments.Add(Source, Type, Position, DisplayName)
-                                        # Source must be the full path. DisplayName is what Outlook shows.
-                                        mail.Attachments.Add(temp_path, 1, 1, filename)
-                            except Exception as att_err:
-                                logging.warning(f"Erreur attachement {filename}: {att_err}")
+                                    # Optional: Set hidden if strictly inline? Outlook usually handles this automatically if CID matches.
+                                    
+                        except Exception as att_err:
+                            logging.warning(f"Error attached/inline {filename}: {att_err}")
             else:
                 try:
                     payload = message.get_payload(decode=True)
@@ -281,7 +355,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True):
             
             # Suppression du flag Unsent et réglage de la date via MAPI
             # On le fait AVANT le déplacement
-            set_item_properties(mail, date_val)
+            set_item_properties(mail, date_val, sender_name=sender)
             mail.Save()
 
             # DEPLACEMENT vers le PST cible
@@ -317,6 +391,7 @@ if __name__ == "__main__":
     parser.add_argument("pst", help="Chemin du fichier .pst de sortie")
     parser.add_argument("--folder", default="Gmail Archive", help="Nom du dossier cible dans Outlook")
     parser.add_argument("--no-resume", action="store_false", dest="resume", help="Ne pas reprendre la migration précédente")
+    parser.add_argument("--limit", type=int, default=None, help="Limiter le nombre de messages à traiter (pour test)")
     
     args = parser.parse_args()
-    mbox_to_pst(args.mbox, args.pst, args.folder, args.resume)
+    mbox_to_pst(args.mbox, args.pst, args.folder, args.resume, args.limit)
