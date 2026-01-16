@@ -78,10 +78,9 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
             prop_accessor.SetProperty(PR_CLIENT_SUBMIT_TIME, date_obj)
             prop_accessor.SetProperty(PR_MESSAGE_DELIVERY_TIME, date_obj)
         
-        # Set Flags: MSGFLAG_READ (0x1) + MSGFLAG_SENT (0x2)
-        prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 3)
-        # Mark message as sent (avoid draft UI)
-        prop_accessor.SetProperty(PR_MESSAGE_STATUS, 1)
+        # Mark as read and not unsent (avoid draft UI)
+        prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 1)
+        prop_accessor.SetProperty(PR_MESSAGE_STATUS, 0)
         prop_accessor.SetProperty(PR_SUBMIT_FLAGS, 0)
 
         # Set Sender Info manually if available
