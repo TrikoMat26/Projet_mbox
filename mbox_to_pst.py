@@ -57,6 +57,8 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
         
         # Flags (Ready/Read/Sent)
         PR_MESSAGE_FLAGS = "http://schemas.microsoft.com/mapi/proptag/0x0E070003"
+        PR_MESSAGE_STATUS = "http://schemas.microsoft.com/mapi/proptag/0x0E170003"
+        PR_SUBMIT_FLAGS = "http://schemas.microsoft.com/mapi/proptag/0x0E0A0003"
         PR_SENDER_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x5D01001F"
         PR_SENT_REPRESENTING_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x5D02001F"
         
@@ -78,6 +80,9 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
         
         # Set Flags: MSGFLAG_READ (0x1) + MSGFLAG_SENT (0x2)
         prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 3)
+        # Mark message as sent (avoid draft UI)
+        prop_accessor.SetProperty(PR_MESSAGE_STATUS, 1)
+        prop_accessor.SetProperty(PR_SUBMIT_FLAGS, 0)
 
         # Set Sender Info manually if available
         if sender_name or sender_email:
@@ -413,6 +418,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             
             # Forcer le format du message pour éviter le texte brut par défaut
             mail.MessageClass = "IPM.Note"
+            try:
+                mail.UnRead = False
+            except Exception:
+                pass
             
             # Sauvegarde initiale dans le dossier temporaire
             mail.Save()
