@@ -7,7 +7,7 @@ import tempfile
 import logging
 import json
 from email.header import decode_header
-from email.utils import parsedate_to_datetime, getaddresses, formataddr
+from email.utils import parsedate_to_datetime, getaddresses, formataddr, parseaddr
 import datetime
 import mimetypes
 
@@ -80,15 +80,15 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
         # Set Sender Info manually if available
         if sender_name or sender_email:
             name = sender_name or sender_email
-            email_addr = sender_email or sender_name
 
             prop_accessor.SetProperty(PR_SENDER_NAME, name)
-            prop_accessor.SetProperty(PR_SENDER_EMAIL_ADDRESS, email_addr)
-            prop_accessor.SetProperty(PR_SENDER_ADDRTYPE, "SMTP")
-            
             prop_accessor.SetProperty(PR_SENT_REPRESENTING_NAME, name)
-            prop_accessor.SetProperty(PR_SENT_REPRESENTING_EMAIL_ADDRESS, email_addr)
-            prop_accessor.SetProperty(PR_SENT_REPRESENTING_ADDRTYPE, "SMTP")
+
+            if sender_email:
+                prop_accessor.SetProperty(PR_SENDER_EMAIL_ADDRESS, sender_email)
+                prop_accessor.SetProperty(PR_SENDER_ADDRTYPE, "SMTP")
+                prop_accessor.SetProperty(PR_SENT_REPRESENTING_EMAIL_ADDRESS, sender_email)
+                prop_accessor.SetProperty(PR_SENT_REPRESENTING_ADDRTYPE, "SMTP")
         
     except Exception as e:
         # logging.warning(f"Error setting MAPI properties: {e}")
@@ -123,7 +123,8 @@ def normalize_addresses(header_value):
     if not header_value:
         return ""
     addresses = []
-    for name, email in getaddresses([header_value]):
+    decoded_header = decode_mime_header(header_value)
+    for name, email in getaddresses([header_value, decoded_header]):
         decoded_name = decode_mime_header(name).strip()
         addresses.append(formataddr((decoded_name, email)))
     return "; ".join([addr for addr in addresses if addr.strip()])
@@ -131,12 +132,19 @@ def normalize_addresses(header_value):
 def parse_sender(header_value):
     if not header_value:
         return "", ""
-    addresses = getaddresses([header_value])
-    if not addresses:
-        return decode_mime_header(header_value).strip(), ""
-    name, email = addresses[0]
+    decoded_header = decode_mime_header(header_value)
+    name, email = parseaddr(decoded_header)
+    if not email:
+        name, email = parseaddr(header_value)
     decoded_name = decode_mime_header(name).strip()
+    if not decoded_name and not email:
+        decoded_name = decoded_header.strip()
     return decoded_name or email, email
+
+def format_sender_display(sender_name, sender_email):
+    if sender_email:
+        return formataddr((sender_name, sender_email))
+    return sender_name
 
 def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, limit=None):
     if not os.path.exists(mbox_path):
@@ -302,7 +310,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             
             # Application des propriétés de base
             mail.Subject = subject
-            mail.SentOnBehalfOfName = sender_name
+            mail.SentOnBehalfOfName = format_sender_display(sender_name, sender_email)
             mail.To = to
             
             if categories:
