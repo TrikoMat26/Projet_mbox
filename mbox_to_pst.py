@@ -51,55 +51,49 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
     Uses PropertyAccessor to set the sent/received date, message flags, and SENDER info.
     """
     try:
-        # Time Properties
-        PR_CLIENT_SUBMIT_TIME = "http://schemas.microsoft.com/mapi/proptag/0x00390040"
-        PR_MESSAGE_DELIVERY_TIME = "http://schemas.microsoft.com/mapi/proptag/0x0E060040"
-        
-        # Flags (Ready/Read/Sent)
-        PR_MESSAGE_FLAGS = "http://schemas.microsoft.com/mapi/proptag/0x0E070003"
-        PR_MESSAGE_STATUS = "http://schemas.microsoft.com/mapi/proptag/0x0E170003"
-        PR_SUBMIT_FLAGS = "http://schemas.microsoft.com/mapi/proptag/0x0E0A0003"
-        PR_SENDER_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x5D01001F"
-        PR_SENT_REPRESENTING_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x5D02001F"
-        
-        # Sender Properties (Force the "From" field)
-        PR_SENDER_NAME = "http://schemas.microsoft.com/mapi/proptag/0x0C1A001F"
-        PR_SENDER_EMAIL_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x0C1F001F"
-        PR_SENDER_ADDRTYPE = "http://schemas.microsoft.com/mapi/proptag/0x0C1E001F"
-        
-        PR_SENT_REPRESENTING_NAME = "http://schemas.microsoft.com/mapi/proptag/0x0042001F"
-        PR_SENT_REPRESENTING_EMAIL_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x0065001F"
-        PR_SENT_REPRESENTING_ADDRTYPE = "http://schemas.microsoft.com/mapi/proptag/0x0064001F"
-
         prop_accessor = mail_item.PropertyAccessor
         
-        # Set Dates
-        if date_obj:
-            prop_accessor.SetProperty(PR_CLIENT_SUBMIT_TIME, date_obj)
-            prop_accessor.SetProperty(PR_MESSAGE_DELIVERY_TIME, date_obj)
+        # 1. FORCE CLEAR DRAFT STATUS FIRST
+        # PR_MESSAGE_FLAGS (0x0E070003)
+        # MSGFLAG_READ = 0x01
+        # MSGFLAG_UNSENT = 0x08 (We want to CLEAR this)
+        # Value 1 = Read, Sent.
+        prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E070003", 1)
         
-        # Mark as read and not unsent (avoid draft UI)
-        prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 1)
-        prop_accessor.SetProperty(PR_MESSAGE_STATUS, 0)
-        prop_accessor.SetProperty(PR_SUBMIT_FLAGS, 0)
+        # PR_MESSAGE_STATUS (0x0E170003) -> 0 = MSGSTATUS_REMOTE_DOWNLOAD or similar clean state
+        prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E170003", 0)
+        
+        # PR_ICON_INDEX (0x10800003) -> 256 or -1 (Default mail icon, not draft icon)
+        try:
+             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x10800003", -1)
+        except: pass
 
-        # Set Sender Info manually if available
+        # 2. Set Dates (Critical for display)
+        if date_obj:
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", date_obj) # PR_CLIENT_SUBMIT_TIME
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", date_obj) # PR_MESSAGE_DELIVERY_TIME
+
+    except Exception as e:
+        # logging.warning(f"Error setting basic MAPI flags: {e}")
+        pass
+
+    try:
+         # 3. Set Sender Info (Must happen after clearing draft status for UI to respect it)
         if sender_name or sender_email:
             name = sender_name or sender_email
-
-            prop_accessor.SetProperty(PR_SENDER_NAME, name)
-            prop_accessor.SetProperty(PR_SENT_REPRESENTING_NAME, name)
-
-            if sender_email:
-                prop_accessor.SetProperty(PR_SENDER_EMAIL_ADDRESS, sender_email)
-                prop_accessor.SetProperty(PR_SENDER_ADDRTYPE, "SMTP")
-                prop_accessor.SetProperty(PR_SENT_REPRESENTING_EMAIL_ADDRESS, sender_email)
-                prop_accessor.SetProperty(PR_SENT_REPRESENTING_ADDRTYPE, "SMTP")
-                prop_accessor.SetProperty(PR_SENDER_SMTP_ADDRESS, sender_email)
-                prop_accessor.SetProperty(PR_SENT_REPRESENTING_SMTP_ADDRESS, sender_email)
-        
-    except Exception as e:
-        # logging.warning(f"Error setting MAPI properties: {e}")
+            email = sender_email or name
+            
+            # Basic props
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1A001F", name) # PR_SENDER_NAME
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0042001F", name) # PR_SENT_REPRESENTING_NAME
+            
+            if "@" in email:
+                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1F001F", email) # PR_SENDER_EMAIL_ADDRESS
+                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1E001F", "SMTP") # PR_SENDER_ADDRTYPE
+                 
+                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0065001F", email) # PR_SENT_REPRESENTING_EMAIL_ADDRESS
+                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0064001F", "SMTP") # PR_SENT_REPRESENTING_ADDRTYPE
+    except Exception:
         pass
 
 def save_state(count):
@@ -130,24 +124,48 @@ def add_to_master_categories(namespace, category_names):
 def normalize_addresses(header_value):
     if not header_value:
         return ""
-    addresses = []
+    
+    # helper to decode header before parsing
+    # getaddresses works better on already decoded strings if they contain encoded words
     decoded_header = decode_mime_header(header_value)
-    for name, email in getaddresses([header_value, decoded_header]):
+    
+    # Fallback: if decoding failed to look like a list, use original
+    target = decoded_header if "@" in decoded_header else str(header_value)
+    
+    raw_values = [target]
+    
+    seen = set()
+    addresses = []
+    
+    for name, email in getaddresses(raw_values):
+        if not email:
+            continue
+        
+        email_clean = email.strip()
+        email_lower = email_clean.lower()
+        
+        if email_lower in seen:
+            continue
+        seen.add(email_lower)
+        
+        # Name might still need decoding if getaddresses extracted an encoded part
         decoded_name = decode_mime_header(name).strip()
-        addresses.append(formataddr((decoded_name, email)))
-    return "; ".join([addr for addr in addresses if addr.strip()])
+        addresses.append(formataddr((decoded_name, email_clean)))
+        
+    return "; ".join(addresses)
 
 def parse_sender(header_value):
     if not header_value:
         return "", ""
-    decoded_header = decode_mime_header(header_value)
-    name, email = parseaddr(decoded_header)
-    if not email:
-        name, email = parseaddr(header_value)
-    decoded_name = decode_mime_header(name).strip()
-    if not decoded_name and not email:
-        decoded_name = decoded_header.strip()
-    return decoded_name or email, email
+    
+    # Use getaddresses which is more robust for headers than parseaddr
+    # It handles comma-separated lists (we take the first one)
+    pairs = getaddresses([str(header_value)])
+    if pairs:
+        name, email = pairs[0]
+        decoded_name = decode_mime_header(name).strip()
+        return decoded_name, email.strip()
+    return "", ""
 
 def format_sender_display(sender_name, sender_email):
     if sender_email:

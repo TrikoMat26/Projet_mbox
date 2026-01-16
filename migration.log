@@ -1,88 +1,42 @@
-2026-01-15 13:44:39,880 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 13:44:39,897 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\Utils.mbox
-2026-01-15 13:44:41,363 - INFO - Migration completed!
-2026-01-15 13:44:41,363 - INFO - Total messages: 35
-2026-01-15 13:44:41,364 - INFO - Errors: 0
-2026-01-15 13:44:41,366 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 14:32:08,365 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 14:32:08,381 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\Utils.mbox
-2026-01-15 14:32:09,918 - INFO - Migration completed!
-2026-01-15 14:32:09,919 - INFO - Total messages: 35
-2026-01-15 14:32:09,920 - INFO - Errors: 0
-2026-01-15 14:32:09,921 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 14:40:59,030 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 14:40:59,047 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\Utils.mbox
-2026-01-15 14:41:00,636 - INFO - Migration completed!
-2026-01-15 14:41:00,636 - INFO - Total messages: 35
-2026-01-15 14:41:00,638 - INFO - Errors: 0
-2026-01-15 14:41:00,638 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 14:53:51,119 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 14:53:51,136 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 14:55:37,585 - INFO - Limit of 50 messages reached. Stopping.
-2026-01-15 14:55:37,586 - INFO - Migration completed!
-2026-01-15 14:55:37,586 - INFO - Total messages: 50
-2026-01-15 14:55:37,588 - INFO - Errors: 0
-2026-01-15 14:55:37,588 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:20:58,573 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:20:58,600 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 15:20:58,601 - INFO - Resuming from message 50...
-2026-01-15 15:22:39,337 - INFO - Limit of 50 messages reached. Stopping.
-2026-01-15 15:22:39,338 - INFO - Migration completed!
-2026-01-15 15:22:39,338 - INFO - Total messages: 50
-2026-01-15 15:22:39,338 - INFO - Errors: 0
-2026-01-15 15:22:39,338 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:26:14,116 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:26:14,144 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 15:27:59,077 - INFO - Limit of 50 messages reached. Stopping.
-2026-01-15 15:27:59,078 - INFO - Migration completed!
-2026-01-15 15:27:59,079 - INFO - Total messages: 50
-2026-01-15 15:27:59,079 - INFO - Errors: 0
-2026-01-15 15:27:59,081 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:30:04,818 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:30:04,862 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 15:30:04,864 - INFO - Resuming from message 50...
-2026-01-15 15:31:46,426 - INFO - Limit of 50 messages reached. Stopping.
-2026-01-15 15:31:46,426 - INFO - Migration completed!
-2026-01-15 15:31:46,427 - INFO - Total messages: 50
-2026-01-15 15:31:46,429 - INFO - Errors: 0
-2026-01-15 15:31:46,429 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:47:18,385 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:47:18,429 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 15:47:18,430 - INFO - Resuming from message 50...
-2026-01-15 15:49:02,396 - INFO - Processed 100 messages... (0.48 msgs/sec)
-2026-01-15 15:59:53,949 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 15:59:53,998 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 15:59:53,999 - INFO - Resuming from message 50...
-2026-01-15 16:01:39,555 - INFO - Processed 100 messages... (0.47 msgs/sec)
-2026-01-15 16:01:45,990 - INFO - Limit of 150 messages reached. Stopping.
-2026-01-15 16:01:45,990 - INFO - Migration completed!
-2026-01-15 16:01:45,990 - INFO - Total messages: 150
-2026-01-15 16:01:45,991 - INFO - Errors: 0
-2026-01-15 16:01:45,991 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 16:29:35,889 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 16:29:35,943 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 16:29:35,944 - INFO - Resuming from message 150...
-2026-01-15 16:31:20,168 - ERROR - Error processing message 152: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'Ressources système insuffisantes pour cette opération.', None, 0, -2147221234), None)
-2026-01-15 16:31:22,043 - INFO - Session limit of 20 messages reached (Index 170). Stopping.
-2026-01-15 16:31:22,044 - INFO - Migration completed!
-2026-01-15 16:31:22,044 - INFO - Total messages: 170
-2026-01-15 16:31:22,048 - INFO - Errors: 1
-2026-01-15 16:31:22,049 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 16:38:14,789 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 16:38:14,849 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 16:38:14,850 - INFO - Resuming from message 170...
-2026-01-15 16:39:59,626 - INFO - Session limit of 20 messages reached (Index 190). Stopping.
-2026-01-15 16:39:59,664 - INFO - Migration completed!
-2026-01-15 16:39:59,664 - INFO - Total messages: 190
-2026-01-15 16:39:59,669 - INFO - Errors: 0
-2026-01-15 16:39:59,672 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 16:40:13,571 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-15 16:40:13,637 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
-2026-01-15 16:40:13,638 - INFO - Resuming from message 190...
-2026-01-15 16:41:59,260 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
-2026-01-15 16:41:59,706 - INFO - Processed 200 messages... (0.09 msgs/sec)
-2026-01-15 16:42:00,528 - INFO - Session limit of 20 messages reached (Index 210). Stopping.
-2026-01-15 16:42:00,533 - INFO - Migration completed!
-2026-01-15 16:42:00,534 - INFO - Total messages: 210
-2026-01-15 16:42:00,536 - INFO - Errors: 0
-2026-01-15 16:42:00,536 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 09:34:10,702 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 09:34:10,751 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-16 09:35:56,672 - INFO - Session limit of 50 messages reached (Index 50). Stopping.
+2026-01-16 09:35:56,677 - INFO - Migration completed!
+2026-01-16 09:35:56,677 - INFO - Total messages: 50
+2026-01-16 09:35:56,677 - INFO - Errors: 0
+2026-01-16 09:35:56,678 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 09:52:46,713 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 09:52:46,768 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-16 09:54:29,942 - INFO - Session limit of 50 messages reached (Index 50). Stopping.
+2026-01-16 09:54:29,948 - INFO - Migration completed!
+2026-01-16 09:54:29,948 - INFO - Total messages: 50
+2026-01-16 09:54:29,949 - INFO - Errors: 0
+2026-01-16 09:54:29,949 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 10:47:38,880 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 10:47:38,936 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-16 10:49:22,290 - INFO - Session limit of 50 messages reached (Index 50). Stopping.
+2026-01-16 10:49:22,297 - INFO - Migration completed!
+2026-01-16 10:49:22,298 - INFO - Total messages: 50
+2026-01-16 10:49:22,299 - INFO - Errors: 0
+2026-01-16 10:49:22,300 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 10:57:28,929 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 10:57:28,987 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-16 10:59:12,478 - INFO - Session limit of 50 messages reached (Index 50). Stopping.
+2026-01-16 10:59:12,487 - INFO - Migration completed!
+2026-01-16 10:59:12,487 - INFO - Total messages: 50
+2026-01-16 10:59:12,487 - INFO - Errors: 0
+2026-01-16 10:59:12,490 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 11:10:14,845 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 11:10:14,901 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-16 11:11:58,426 - INFO - Session limit of 50 messages reached (Index 50). Stopping.
+2026-01-16 11:11:58,433 - INFO - Migration completed!
+2026-01-16 11:11:58,433 - INFO - Total messages: 50
+2026-01-16 11:11:58,435 - INFO - Errors: 0
+2026-01-16 11:11:58,435 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 11:29:03,602 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-16 11:29:03,655 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-16 11:30:47,190 - INFO - Session limit of 50 messages reached (Index 50). Stopping.
+2026-01-16 11:30:47,198 - INFO - Migration completed!
+2026-01-16 11:30:47,198 - INFO - Total messages: 50
+2026-01-16 11:30:47,198 - INFO - Errors: 0
+2026-01-16 11:30:47,201 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
