@@ -55,8 +55,10 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
         PR_CLIENT_SUBMIT_TIME = "http://schemas.microsoft.com/mapi/proptag/0x00390040"
         PR_MESSAGE_DELIVERY_TIME = "http://schemas.microsoft.com/mapi/proptag/0x0E060040"
         
-        # Flags (Ready/Read)
+        # Flags (Ready/Read/Sent)
         PR_MESSAGE_FLAGS = "http://schemas.microsoft.com/mapi/proptag/0x0E070003"
+        PR_SENDER_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x5D01001F"
+        PR_SENT_REPRESENTING_SMTP_ADDRESS = "http://schemas.microsoft.com/mapi/proptag/0x5D02001F"
         
         # Sender Properties (Force the "From" field)
         PR_SENDER_NAME = "http://schemas.microsoft.com/mapi/proptag/0x0C1A001F"
@@ -74,8 +76,8 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
             prop_accessor.SetProperty(PR_CLIENT_SUBMIT_TIME, date_obj)
             prop_accessor.SetProperty(PR_MESSAGE_DELIVERY_TIME, date_obj)
         
-        # Set Flags: MSGFLAG_READ (0x1) and clear MSGFLAG_UNSENT (0x8)
-        prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 1)
+        # Set Flags: MSGFLAG_READ (0x1) + MSGFLAG_SENT (0x2)
+        prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 3)
 
         # Set Sender Info manually if available
         if sender_name or sender_email:
@@ -89,6 +91,8 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
                 prop_accessor.SetProperty(PR_SENDER_ADDRTYPE, "SMTP")
                 prop_accessor.SetProperty(PR_SENT_REPRESENTING_EMAIL_ADDRESS, sender_email)
                 prop_accessor.SetProperty(PR_SENT_REPRESENTING_ADDRTYPE, "SMTP")
+                prop_accessor.SetProperty(PR_SENDER_SMTP_ADDRESS, sender_email)
+                prop_accessor.SetProperty(PR_SENT_REPRESENTING_SMTP_ADDRESS, sender_email)
         
     except Exception as e:
         # logging.warning(f"Error setting MAPI properties: {e}")
