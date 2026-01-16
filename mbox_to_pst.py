@@ -7,7 +7,7 @@ import tempfile
 import logging
 import json
 from email.header import decode_header
-from email.utils import parsedate_to_datetime
+from email.utils import parsedate_to_datetime, getaddresses, formataddr
 import datetime
 import mimetypes
 
@@ -46,7 +46,7 @@ def decode_mime_header(header_value):
     except:
         return str(header_value)
 
-def set_item_properties(mail_item, date_obj, sender_name=""):
+def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
     """
     Uses PropertyAccessor to set the sent/received date, message flags, and SENDER info.
     """
@@ -78,17 +78,9 @@ def set_item_properties(mail_item, date_obj, sender_name=""):
         prop_accessor.SetProperty(PR_MESSAGE_FLAGS, 1)
 
         # Set Sender Info manually if available
-        if sender_name:
-            # Extract email if possible "Name <email>"
-            email_addr = sender_name
-            name = sender_name
-            if "<" in sender_name and ">" in sender_name:
-                import re
-                match = re.search(r'<([^>]+)>', sender_name)
-                if match:
-                    email_addr = match.group(1)
-                    # Clean name
-                    name = sender_name.split("<")[0].strip().strip('"')
+        if sender_name or sender_email:
+            name = sender_name or sender_email
+            email_addr = sender_email or sender_name
 
             prop_accessor.SetProperty(PR_SENDER_NAME, name)
             prop_accessor.SetProperty(PR_SENDER_EMAIL_ADDRESS, email_addr)
@@ -126,6 +118,25 @@ def add_to_master_categories(namespace, category_names):
                 except: pass
     except Exception as e:
         logging.warning(f"Could not update Master Category List: {e}")
+
+def normalize_addresses(header_value):
+    if not header_value:
+        return ""
+    addresses = []
+    for name, email in getaddresses([header_value]):
+        decoded_name = decode_mime_header(name).strip()
+        addresses.append(formataddr((decoded_name, email)))
+    return "; ".join([addr for addr in addresses if addr.strip()])
+
+def parse_sender(header_value):
+    if not header_value:
+        return "", ""
+    addresses = getaddresses([header_value])
+    if not addresses:
+        return decode_mime_header(header_value).strip(), ""
+    name, email = addresses[0]
+    decoded_name = decode_mime_header(name).strip()
+    return decoded_name or email, email
 
 def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, limit=None):
     if not os.path.exists(mbox_path):
@@ -223,9 +234,9 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
         temp_folder = target_folder
 
     # Open MBOX
-    import mailbox
     logging.info(f"Opening MBOX file: {mbox_path}")
     mbox = mailbox.mbox(mbox_path)
+    attachments_temp_dir = tempfile.TemporaryDirectory()
     
     start_at = 0
     if resume:
@@ -254,8 +265,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
         try:
             # Extract basic info
             subject = decode_mime_header(message['subject']) or "(No Subject)"
-            sender = decode_mime_header(message['from']) or ""
-            to = decode_mime_header(message['to']) or ""
+            sender_header = message['from'] or ""
+            to_header = message['to'] or ""
+            sender_name, sender_email = parse_sender(sender_header)
+            to = normalize_addresses(to_header)
             
             # Date parsing
             date_val = None
@@ -289,7 +302,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             
             # Application des propriétés de base
             mail.Subject = subject
-            mail.SentOnBehalfOfName = sender
+            mail.SentOnBehalfOfName = sender_name
             mail.To = to
             
             if categories:
@@ -346,25 +359,27 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                         try:
                             payload = part.get_payload(decode=True)
                             if payload:
-                                with tempfile.TemporaryDirectory() as temp_dir:
-                                    temp_path = os.path.join(temp_dir, filename)
-                                    with open(temp_path, "wb") as f:
-                                        f.write(payload)
-                                    
-                                    # Add to Outlook
-                                    attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
-                                    
-                                    # Handle Content-ID for inline images
-                                    # CID allows <img src="cid:foo"> to work
-                                    if content_id:
-                                        # Remove <>
-                                        cid_clean = content_id.strip('<>')
-                                        try:
-                                            # PR_ATTACH_CONTENT_ID = 0x3712001F
-                                            attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
-                                        except: pass
-                                        
-                                    # Optional: Set hidden if strictly inline? Outlook usually handles this automatically if CID matches.
+                                temp_path = os.path.join(attachments_temp_dir.name, filename)
+                                with open(temp_path, "wb") as f:
+                                    f.write(payload)
+                                
+                                # Add to Outlook
+                                attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
+                                
+                                # Handle Content-ID for inline images
+                                # CID allows <img src="cid:foo"> to work
+                                if content_id:
+                                    # Remove <>
+                                    cid_clean = content_id.strip('<>')
+                                    try:
+                                        # PR_ATTACH_CONTENT_ID = 0x3712001F
+                                        attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
+                                    except: pass
+                                
+                                try:
+                                    os.remove(temp_path)
+                                except OSError:
+                                    pass
                                     
                         except Exception as att_err:
                             logging.warning(f"Error attached/inline {filename}: {att_err}")
@@ -392,7 +407,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             
             # Suppression du flag Unsent et réglage de la date via MAPI
             # On le fait AVANT le déplacement
-            set_item_properties(mail, date_val, sender_name=sender)
+            set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email)
             mail.Save()
 
             # DEPLACEMENT FINAL
@@ -427,6 +442,8 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
         if temp_folder.Items.Count == 0:
             temp_folder.Delete()
     except: pass
+
+    attachments_temp_dir.cleanup()
 
     save_state(count)
     logging.info(f"Migration completed!")
