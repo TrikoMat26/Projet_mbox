@@ -7,7 +7,7 @@ import tempfile
 import logging
 import json
 from email.header import decode_header
-from email.utils import parsedate_to_datetime, getaddresses, formataddr
+from email.utils import parsedate_to_datetime, getaddresses, formataddr, parseaddr
 import datetime
 import mimetypes
 
@@ -123,7 +123,8 @@ def normalize_addresses(header_value):
     if not header_value:
         return ""
     addresses = []
-    for name, email in getaddresses([header_value]):
+    decoded_header = decode_mime_header(header_value)
+    for name, email in getaddresses([header_value, decoded_header]):
         decoded_name = decode_mime_header(name).strip()
         addresses.append(formataddr((decoded_name, email)))
     return "; ".join([addr for addr in addresses if addr.strip()])
@@ -132,13 +133,13 @@ def parse_sender(header_value):
     if not header_value:
         return "", ""
     decoded_header = decode_mime_header(header_value)
-    addresses = getaddresses([header_value, decoded_header])
-    if not addresses:
-        name, email = "", ""
-    else:
-        name, email = addresses[0]
+    name, email = parseaddr(decoded_header)
+    if not email:
+        name, email = parseaddr(header_value)
     decoded_name = decode_mime_header(name).strip()
-    return decoded_name or email or decoded_header.strip(), email
+    if not decoded_name and not email:
+        decoded_name = decoded_header.strip()
+    return decoded_name or email, email
 
 def format_sender_display(sender_name, sender_email):
     if sender_email:
