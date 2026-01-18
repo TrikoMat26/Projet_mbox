@@ -49,23 +49,21 @@ def decode_mime_header(header_value):
 def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
     """
     Uses PropertyAccessor to set the sent/received date, message flags, and SENDER info.
+    Must be called BEFORE the first Save() to effectively clear Draft status.
     """
     try:
         prop_accessor = mail_item.PropertyAccessor
         
         # 1. FORCE CLEAR DRAFT STATUS FIRST
-        # PR_MESSAGE_FLAGS (0x0E070003)
-        # MSGFLAG_READ = 0x01
-        # MSGFLAG_UNSENT = 0x08 (We want to CLEAR this)
-        # Value 1 = Read, Sent.
+        # PR_MESSAGE_FLAGS (0x0E070003) -> 1 = Read, Sent.
         prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E070003", 1)
         
-        # PR_MESSAGE_STATUS (0x0E170003) -> 0 = MSGSTATUS_REMOTE_DOWNLOAD or similar clean state
+        # PR_MESSAGE_STATUS (0x0E170003) -> 0 = Clean state
         prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E170003", 0)
         
-        # PR_ICON_INDEX (0x10800003) -> 256 or -1 (Default mail icon, not draft icon)
+        # PR_ICON_INDEX (0x10800003) -> 256 (Standard Unopened Mail Icon)
         try:
-             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x10800003", -1)
+             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x10800003", 256)
         except: pass
 
         # 2. Set Dates (Critical for display)
@@ -125,31 +123,45 @@ def normalize_addresses(header_value):
     if not header_value:
         return ""
     
-    # helper to decode header before parsing
-    # getaddresses works better on already decoded strings if they contain encoded words
-    decoded_header = decode_mime_header(header_value)
-    
-    # Fallback: if decoding failed to look like a list, use original
-    target = decoded_header if "@" in decoded_header else str(header_value)
-    
-    raw_values = [target]
+    # Use getaddresses on the raw header converted to string.
+    # We do NOT pre-decode the whole header because that can break address delimiters (commas).
+    raw_values = [str(header_value)]
     
     seen = set()
     addresses = []
     
     for name, email in getaddresses(raw_values):
         if not email:
-            continue
+            # Sometimes getaddresses puts the whole encoded mess in 'name' if no angle brackets
+            if "@" in name:
+                 email = name
+                 name = ""
+            else:
+                 continue
         
         email_clean = email.strip()
         email_lower = email_clean.lower()
         
+        # Deduplication
         if email_lower in seen:
             continue
         seen.add(email_lower)
         
-        # Name might still need decoding if getaddresses extracted an encoded part
-        decoded_name = decode_mime_header(name).strip()
+        # Decode the name properly
+        decoded_name = ""
+        if name:
+            # Helper to strip surrounding quotes if they wrap an encoded word
+            # e.g. "=?utf-8?..." -> =?utf-8?...
+            candidate = name.strip()
+            if candidate.startswith('"') and candidate.endswith('"') and "=?" in candidate:
+                candidate = candidate[1:-1]
+            
+            decoded_name = decode_mime_header(candidate).strip()
+            
+            # Double-check: sometimes one pass isn't enough or it was double-encoded
+            if "=?" in decoded_name:
+                 decoded_name = decode_mime_header(decoded_name).strip()
+
         addresses.append(formataddr((decoded_name, email_clean)))
         
     return "; ".join(addresses)
@@ -440,12 +452,11 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             except Exception:
                 pass
             
-            # Sauvegarde initiale dans le dossier temporaire
-            mail.Save()
-            
-            # Suppression du flag Unsent et réglage de la date via MAPI
-            # On le fait AVANT le déplacement
+            # CRITICAL FIX: Set MAPI Properties (Sender, Flags, Dates) BEFORE the first Save()
+            # This ensures Outlook does not treat the item as a Draft.
             set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email)
+            
+            # Sauvegarde INITIALE & UNIQUE (Verrouille les propriétés)
             mail.Save()
 
             # DEPLACEMENT FINAL

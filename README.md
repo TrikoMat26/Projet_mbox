@@ -26,7 +26,7 @@ Ce script permet de convertir un fichier `.mbox` (export Google Takeout) en un f
 2.  Lancez le script avec le chemin de votre fichier MBOX et le chemin du fichier PST souhaité :
 
 ```bash
-python mbox_to_pst.py "E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\Test.mbox" "E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst"
+python mbox_to_pst.py "E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox" "E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst" --limit 50
 ```
 
 ### Options supplémentaires :

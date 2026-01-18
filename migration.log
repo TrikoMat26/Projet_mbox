@@ -40,3 +40,11 @@
 2026-01-16 11:30:47,198 - INFO - Total messages: 50
 2026-01-16 11:30:47,198 - INFO - Errors: 0
 2026-01-16 11:30:47,201 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-18 18:17:02,394 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-18 18:17:02,458 - INFO - Opening MBOX file: E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox
+2026-01-18 18:17:03,304 - INFO - Resuming from message 50...
+2026-01-18 18:18:47,398 - INFO - Session limit of 20 messages reached (Index 70). Stopping.
+2026-01-18 18:18:47,448 - INFO - Migration completed!
+2026-01-18 18:18:47,449 - INFO - Total messages: 70
+2026-01-18 18:18:47,449 - INFO - Errors: 0
+2026-01-18 18:18:47,449 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
