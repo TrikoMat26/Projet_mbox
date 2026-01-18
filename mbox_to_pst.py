@@ -11,6 +11,14 @@ from email.utils import parsedate_to_datetime, getaddresses, formataddr, parsead
 import datetime
 import mimetypes
 
+# Optional: tqdm for progress bar (graceful fallback if not installed)
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    tqdm = None
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -297,16 +305,52 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     # Effective limit calculation
     effective_limit = (start_at + limit) if limit else None
     
+    # Count total messages for progress bar (fast pass) - ONLY if no limit is set
+    progress_bar = None
+    if TQDM_AVAILABLE:
+        if limit:
+            # With a limit, we know exactly how many messages we'll process
+            session_total = limit
+            logging.info(f"Processing {session_total} messages (limited)...")
+        else:
+            # No limit: count all messages (necessary for accurate ETA)
+            logging.info("Counting messages for progress bar...")
+            total_messages = sum(1 for _ in mbox)
+            session_total = max(0, total_messages - start_at)
+            logging.info(f"Total messages in MBOX: {total_messages}. To process: {session_total}")
+            # Reset mbox iterator after counting
+            mbox = mailbox.mbox(mbox_path)
+        
+        progress_bar = tqdm(total=session_total, desc="Processing", unit="msg", 
+                           file=sys.stderr, mininterval=0, dynamic_ncols=True,
+                           bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]')
+    else:
+        logging.info("Note: Install 'tqdm' (pip install tqdm) for a visual progress bar.")
+
+    # Show info about skipping if resuming
+    if start_at > 0:
+        logging.info(f"Seeking to message {start_at} (this may take a moment for large files)...")
+    
     # Iterate through MBOX
+    messages_skipped = 0
     for i, message in enumerate(mbox):
+        # Skip to resume point
+        if i < start_at:
+            messages_skipped = i + 1
+            # Show skip progress every 1000 messages
+            if i > 0 and i % 1000 == 0:
+                print(f"\r  Skipped {i}/{start_at} messages...", end="", flush=True)
+            continue
+        
+        # Clear the skip line if we printed any
+        if messages_skipped > 0 and messages_skipped == start_at:
+            print(f"\r  Skipped {start_at} messages.              ")
+            messages_skipped = 0  # Reset to avoid printing again
+            
         if effective_limit and i >= effective_limit:
             logging.info(f"Session limit of {limit} messages reached (Index {i}). Stopping.")
             break
 
-        if i < start_at:
-            count = i + 1
-            continue
-            
         mail = None # Initialize to ensure cleanup
         try:
             # Extract basic info
@@ -465,10 +509,19 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                 mail.Move(target_folder)
             
             count = i + 1
-            if count % 100 == 0:
+            
+            # Update progress bar after each successfully processed message
+            if progress_bar:
+                progress_bar.update(1)
+                progress_bar.refresh()  # Force immediate display
+            elif count % 100 == 0:
+                # Fallback text logging if no tqdm
                 elapsed = time.time() - start_time
                 rate = (count - start_at) / elapsed if elapsed > 0 else 0
                 logging.info(f"Processed {count} messages... ({rate:.2f} msgs/sec)")
+            
+            # Save state periodically
+            if count % 100 == 0:
                 save_state(count)
             
             # Micro-pause every 10 messages to avoid resource exhaustion
@@ -491,6 +544,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
         if temp_folder.Items.Count == 0:
             temp_folder.Delete()
     except: pass
+
+    # Close progress bar
+    if progress_bar:
+        progress_bar.close()
 
     attachments_temp_dir.cleanup()
 
