@@ -1,4 +1,3 @@
-import mailbox
 import win32com.client
 import os
 import sys
@@ -8,8 +7,135 @@ import logging
 import json
 from email.header import decode_header
 from email.utils import parsedate_to_datetime, getaddresses, formataddr, parseaddr
+from email import message_from_bytes
 import datetime
 import mimetypes
+import re
+
+def stream_mbox(mbox_path, start_at=0, progress_callback=None):
+    """
+    Streaming MBOX parser that yields (message_index, file_position, message) tuples.
+    
+    This reads the file in chunks and parses messages on-the-fly, allowing
+    real-time progress updates based on file position.
+    
+    Args:
+        mbox_path: Path to the MBOX file
+        start_at: Message index to start from (for resume support)
+        progress_callback: Optional callable(file_position, file_size) for progress updates
+    
+    Yields:
+        (message_index, file_position, email.message.Message)
+    """
+    file_size = os.path.getsize(mbox_path)
+    mbox_from_pattern = re.compile(rb'^From .+\r?\n', re.MULTILINE)
+    
+    with open(mbox_path, 'rb') as f:
+        message_index = 0
+        current_message_data = b''
+        last_progress_pos = 0
+        
+        # Read in chunks for efficiency
+        chunk_size = 1024 * 1024  # 1 MB chunks
+        buffer = b''
+        
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk and not buffer:
+                break
+            
+            buffer += chunk
+            
+            # Find all "From " lines (message boundaries)
+            # MBOX format: each message starts with "From <email> <date>"
+            matches = list(mbox_from_pattern.finditer(buffer))
+            
+            if len(matches) == 0:
+                # No complete message boundary found yet, keep reading
+                if not chunk:  # End of file
+                    # Process remaining data as last message
+                    if buffer.strip():
+                        if message_index >= start_at:
+                            try:
+                                msg = message_from_bytes(buffer)
+                                yield (message_index, f.tell(), msg)
+                            except Exception:
+                                pass
+                    break
+                continue
+            
+            # Process all complete messages (except the last one in buffer)
+            for i, match in enumerate(matches):
+                if i == 0:
+                    # First match - data before it belongs to previous message
+                    if current_message_data:
+                        if message_index >= start_at:
+                            try:
+                                msg = message_from_bytes(current_message_data)
+                                pos = f.tell() - len(buffer) + match.start()
+                                yield (message_index, pos, msg)
+                            except Exception:
+                                pass
+                        message_index += 1
+                        
+                        # Progress callback during skip phase
+                        if progress_callback and message_index < start_at:
+                            pos = f.tell() - len(buffer) + match.start()
+                            if pos - last_progress_pos > 10 * 1024 * 1024:  # Every 10MB
+                                progress_callback(pos, file_size, message_index, start_at)
+                                last_progress_pos = pos
+                    
+                    # Start new message (skip the "From " line itself)
+                    if i + 1 < len(matches):
+                        current_message_data = buffer[match.end():matches[i + 1].start()]
+                    else:
+                        current_message_data = buffer[match.end():]
+                else:
+                    # Complete message between this match and previous
+                    if message_index >= start_at:
+                        try:
+                            msg = message_from_bytes(current_message_data)
+                            pos = f.tell() - len(buffer) + match.start()
+                            yield (message_index, pos, msg)
+                        except Exception:
+                            pass
+                    message_index += 1
+                    
+                    # Progress callback during skip phase
+                    if progress_callback and message_index < start_at:
+                        pos = f.tell() - len(buffer) + match.start()
+                        if pos - last_progress_pos > 10 * 1024 * 1024:
+                            progress_callback(pos, file_size, message_index, start_at)
+                            last_progress_pos = pos
+                    
+                    # Start new message
+                    if i + 1 < len(matches):
+                        current_message_data = buffer[match.end():matches[i + 1].start()]
+                    else:
+                        current_message_data = buffer[match.end():]
+            
+            # Keep only the last incomplete message in buffer
+            if matches:
+                buffer = buffer[matches[-1].start():]
+            
+            if not chunk:  # End of file
+                # Process final message
+                if buffer.strip():
+                    # Remove the "From " line from the start
+                    match = mbox_from_pattern.match(buffer)
+                    if match:
+                        final_data = buffer[match.end():]
+                    else:
+                        final_data = buffer
+                    
+                    if final_data.strip() and message_index >= start_at:
+                        try:
+                            msg = message_from_bytes(final_data)
+                            yield (message_index, file_size, msg)
+                        except Exception:
+                            pass
+                break
+
 
 # Optional: tqdm for progress bar (graceful fallback if not installed)
 try:
@@ -200,20 +326,16 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     pst_abs_path = os.path.abspath(pst_path)
     
     # Initialize Outlook
-    init_start = time.time()
     try:
-        # Connect to Outlook
-        t_outlook = time.time()
         outlook = win32com.client.Dispatch("Outlook.Application")
         namespace = outlook.GetNamespace("MAPI")
-        print(f"[DEBUG INIT] Outlook Connection: {(time.time()-t_outlook)*1000:.1f}ms", flush=True)
     except Exception as e:
         logging.error(f"Error connecting to Outlook: {e}. Ensure Outlook is installed.")
         return
 
     # Create/Open PST
-    t_pst = time.time()
     logging.info(f"Opening/Creating PST: {pst_abs_path}")
+
     try:
         pst_store = None
         for store in namespace.Stores:
@@ -237,7 +359,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             return
             
         root_folder = pst_store.GetRootFolder()
-        print(f"[DEBUG INIT] PST Access: {(time.time()-t_pst)*1000:.1f}ms", flush=True)
+
     except Exception as e:
         logging.error(f"Error accessing PST: {e}")
         return
@@ -293,11 +415,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
         logging.warning(f"Could not create temp folder in PST, using target: {e}")
         temp_folder = target_folder
 
-    # Open MBOX
-    t_mbox = time.time()
-    logging.info(f"Opening MBOX file: {mbox_path}")
-    mbox = mailbox.mbox(mbox_path)
-    print(f"[DEBUG INIT] MBOX Object Creation: {(time.time()-t_mbox)*1000:.1f}ms", flush=True)
+    # Initialize state variables
     attachments_temp_dir = tempfile.TemporaryDirectory()
     
     start_at = 0
@@ -312,76 +430,69 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     
     # Effective limit calculation
     effective_limit = (start_at + limit) if limit else None
-    
-    # File-based progress tracking
+
+    # Setup progress bar
     file_size = os.path.getsize(mbox_path)
     file_size_mb = file_size / (1024 * 1024)
     
-    # Open the underlying file to track position
-    mbox_file = open(mbox_path, 'rb')
-    
-    # Setup progress bar
     progress_bar = None
-    if TQDM_AVAILABLE:
-        if limit:
-            # With limit: use message count (we know exactly how many)
-            progress_bar = tqdm(total=limit, desc="Processing", unit="msg",
-                               file=sys.stderr, dynamic_ncols=True,
-                               bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msg [{elapsed}<{remaining}]')
-        else:
-            # Without limit: use file size in MB for smooth progress
-            progress_bar = tqdm(total=int(file_size_mb), desc="Processing", unit="MB",
-                               file=sys.stderr, dynamic_ncols=True,
-                               bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}MB [{elapsed}<{remaining}]')
+    last_progress_mb = 0
+    
+    # For unlimited mode: create progress bar immediately (file-based)
+    if TQDM_AVAILABLE and not limit:
+        progress_bar = tqdm(total=int(file_size_mb), desc="Processing", unit="MB",
+                           file=sys.stderr, dynamic_ncols=True,
+                           bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}MB [{elapsed}<{remaining}]')
+    
+    # Progress callback for the streaming parser (unlimited mode only)
+    def progress_callback(pos, total, msg_idx, target_idx):
+        nonlocal last_progress_mb
+        if progress_bar:
+            current_mb = int(pos / (1024 * 1024))
+            if current_mb > last_progress_mb:
+                progress_bar.update(current_mb - last_progress_mb)
+                last_progress_mb = current_mb
     
     # Show info about skipping if resuming
     if start_at > 0:
         logging.info(f"Seeking to message {start_at}...")
     
-    # Track progress
-    last_progress_mb = 0
+    # Use streaming MBOX parser for real-time progress
     messages_processed = 0
+    progress_bar_created_for_limit = False
     
-    # Iterate through MBOX
-    print(f"[DEBUG INIT] Setup complete in {(time.time()-init_start):.2f}s. Starting iteration...", flush=True)
-    
-    t_seek = time.time()
-    for i, message in enumerate(mbox):
-        # Update file-based progress during skip phase (no limit mode)
-        if not limit and progress_bar and i < start_at:
-            current_pos = mbox_file.tell()
-            current_mb = int(current_pos / (1024 * 1024))
+    for i, file_pos, message in stream_mbox(mbox_path, start_at=0, progress_callback=progress_callback if not limit else None):
+        # Update progress based on file position (for unlimited mode)
+        if not limit and progress_bar:
+            current_mb = int(file_pos / (1024 * 1024))
             if current_mb > last_progress_mb:
                 progress_bar.update(current_mb - last_progress_mb)
                 last_progress_mb = current_mb
         
         # Skip to resume point
         if i < start_at:
-            if i > 0 and i % 1000 == 0:
-                 print(f"\r[DEBUG INIT] Seeking: {i}/{start_at}...", end="", flush=True)
             continue
         
-        if i == start_at and start_at > 0:
-            print(f"\n[DEBUG INIT] Seek to {start_at} completed in {(time.time()-t_seek):.2f}s", flush=True)
+        # Create progress bar for limit mode only when processing actually starts
+        if limit and TQDM_AVAILABLE and not progress_bar_created_for_limit:
+            progress_bar = tqdm(total=limit, desc="Processing", unit="msg",
+                               file=sys.stderr, dynamic_ncols=True,
+                               bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
+            progress_bar_created_for_limit = True
             
         if effective_limit and i >= effective_limit:
+
             logging.info(f"Session limit of {limit} messages reached.")
             break
 
-        # ===== DEBUG TIMING =====
-        step_start = time.time()
-        print(f"\n[DEBUG {i}] === Message {i} started ===", flush=True)
-        
-        mail = None # Initialize to ensure cleanup
+        mail = None
         try:
-            # Extract basic info
-            t1 = time.time()
+            # Extract headers
             subject = decode_mime_header(message['subject']) or "(No Subject)"
             sender_header = message['from'] or ""
             to_header = message['to'] or ""
             sender_name, sender_email = parse_sender(sender_header)
             to = normalize_addresses(to_header)
-            print(f"[DEBUG {i}] Headers extraction: {(time.time()-t1)*1000:.1f}ms", flush=True)
             
             # Date parsing
             date_val = None
@@ -391,7 +502,6 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                 except: pass
 
             # X-Gmail-Labels
-            t2 = time.time()
             labels_headers = message.get_all('X-Gmail-Labels', [])
             categories = []
             
@@ -405,28 +515,21 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             
             if categories:
                 ensure_categories_exist(categories)
-            print(f"[DEBUG {i}] Labels/Categories: {(time.time()-t2)*1000:.1f}ms", flush=True)
 
             # Création du message dans le dossier de transit
-            t3 = time.time()
             mail = temp_folder.Items.Add(0) # 0 = olMailItem
-            print(f"[DEBUG {i}] Outlook Items.Add: {(time.time()-t3)*1000:.1f}ms", flush=True)
             
             # Application des propriétés de base
-            t4 = time.time()
             mail.Subject = subject
             mail.SentOnBehalfOfName = format_sender_display(sender_name, sender_email)
             mail.To = to
-            
+
             if categories:
                 mail.Categories = "; ".join(categories)
-            print(f"[DEBUG {i}] Basic properties set: {(time.time()-t4)*1000:.1f}ms", flush=True)
 
             # Corps et Pièces jointes
-            t5 = time.time()
             body_html = ""
             body_text = ""
-            attachments_count = 0
             if message.is_multipart():
                 for part in message.walk():
                     if part.get_content_maintype() == 'multipart':
@@ -437,17 +540,13 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                     filename = part.get_filename()
                     content_id = part.get('Content-ID')
                     
-                    # Determine if this part is a body or an attachment/inline image
-                    # Default: Body if text and no filename/disposition
                     is_attachment = False
                     
                     if "attachment" in content_disposition:
                         is_attachment = True
                     elif filename:
-                         # Has a filename, usually an attachment (even if inline)
                         is_attachment = True
                     elif content_type not in ("text/plain", "text/html"):
-                        # Info not text, assume attachment (e.g. image without headers)
                         is_attachment = True
                     
                     # Handle Body
@@ -464,11 +563,9 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                     
                     # Handle Attachment/Inline
                     else:
-                        # Ensure we have a filename
                         if filename:
                             filename = decode_mime_header(filename)
                         else:
-                            # Generate name if missing
                             ext = mimetypes.guess_extension(content_type) or ".dat"
                             filename = f"attachment_{os.urandom(4).hex()}{ext}"
                             
@@ -479,17 +576,11 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                                 with open(temp_path, "wb") as f:
                                     f.write(payload)
                                 
-                                # Add to Outlook
                                 attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
-                                attachments_count += 1
                                 
-                                # Handle Content-ID for inline images
-                                # CID allows <img src="cid:foo"> to work
                                 if content_id:
-                                    # Remove <>
                                     cid_clean = content_id.strip('<>')
                                     try:
-                                        # PR_ATTACH_CONTENT_ID = 0x3712001F
                                         attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
                                     except: pass
                                 
@@ -510,57 +601,35 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                     else:
                         body_text = content
                 except: pass
-            print(f"[DEBUG {i}] Body+Attachments ({attachments_count} files): {(time.time()-t5)*1000:.1f}ms", flush=True)
 
-            t6 = time.time()
             if body_html:
                 mail.HTMLBody = body_html
             elif body_text:
                 mail.Body = body_text
-            print(f"[DEBUG {i}] Set Body content: {(time.time()-t6)*1000:.1f}ms", flush=True)
             
-            # Forcer le format du message pour éviter le texte brut par défaut
             mail.MessageClass = "IPM.Note"
             try:
                 mail.UnRead = False
             except Exception:
                 pass
             
-            # CRITICAL FIX: Set MAPI Properties (Sender, Flags, Dates) BEFORE the first Save()
-            t7 = time.time()
+            # Set MAPI Properties BEFORE Save
             set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email)
-            print(f"[DEBUG {i}] MAPI Properties: {(time.time()-t7)*1000:.1f}ms", flush=True)
             
-            # Sauvegarde INITIALE & UNIQUE (Verrouille les propriétés)
-            t8 = time.time()
+            # Save & Move
             mail.Save()
-            print(f"[DEBUG {i}] mail.Save(): {(time.time()-t8)*1000:.1f}ms", flush=True)
-
-            # DEPLACEMENT FINAL
-            t9 = time.time()
             if temp_folder != target_folder:
                 mail.Move(target_folder)
-            print(f"[DEBUG {i}] mail.Move(): {(time.time()-t9)*1000:.1f}ms", flush=True)
-            
-            print(f"[DEBUG {i}] === TOTAL: {(time.time()-step_start)*1000:.1f}ms ===", flush=True)
             
             count = i + 1
             messages_processed += 1
             
-            # Update progress bar
-            if progress_bar:
-                if limit:
-                    # Limit mode: update by message
-                    progress_bar.update(1)
-                else:
-                    # Unlimited mode: update by file position
-                    current_pos = mbox_file.tell()
-                    current_mb = int(current_pos / (1024 * 1024))
-                    if current_mb > last_progress_mb:
-                        progress_bar.update(current_mb - last_progress_mb)
-                        last_progress_mb = current_mb
-            elif count % 100 == 0:
+            # Update progress bar (message count for limit mode)
+            if progress_bar and limit:
+                progress_bar.update(1)
+            elif count % 100 == 0 and not progress_bar:
                 # Fallback text logging if no tqdm
+
                 elapsed = time.time() - start_time
                 rate = (count - start_at) / elapsed if elapsed > 0 else 0
                 logging.info(f"Processed {count} messages... ({rate:.2f} msgs/sec)")
@@ -594,9 +663,6 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     # Close progress bar
     if progress_bar:
         progress_bar.close()
-    
-    # Close tracking file handle
-    mbox_file.close()
 
     attachments_temp_dir.cleanup()
 

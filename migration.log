@@ -165,3 +165,59 @@
 2026-01-18 23:58:57,143 - INFO - Total messages: 20
 2026-01-18 23:58:57,144 - INFO - Errors: 0
 2026-01-18 23:58:57,145 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:06:53,439 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:06:55,482 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:06:55,490 - INFO - Migration completed!
+2026-01-19 00:06:55,491 - INFO - Total messages: 20
+2026-01-19 00:06:55,493 - INFO - Errors: 0
+2026-01-19 00:06:55,495 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:08:05,291 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\Utils.mbox
+2026-01-19 00:08:05,311 - ERROR - Error accessing PST: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'Échec du chargement du fichier de données Outlook (.pst) pour cette session.', None, 0, -2147467259), None)
+2026-01-19 00:08:21,259 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:08:21,357 - INFO - Resuming from message 20...
+2026-01-19 00:08:21,372 - INFO - Seeking to message 20...
+2026-01-19 00:08:25,741 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:08:25,750 - INFO - Migration completed!
+2026-01-19 00:08:25,751 - INFO - Total messages: 40
+2026-01-19 00:08:25,751 - INFO - Errors: 0
+2026-01-19 00:08:25,753 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:08:49,986 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:08:50,062 - INFO - Resuming from message 40...
+2026-01-19 00:08:50,076 - INFO - Seeking to message 40...
+2026-01-19 00:08:53,749 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:08:53,756 - INFO - Migration completed!
+2026-01-19 00:08:53,756 - INFO - Total messages: 60
+2026-01-19 00:08:53,757 - INFO - Errors: 0
+2026-01-19 00:08:53,759 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:13:53,613 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:13:53,622 - ERROR - Error accessing PST: name 't_pst' is not defined
+2026-01-19 00:15:37,455 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:15:39,706 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:15:39,714 - INFO - Migration completed!
+2026-01-19 00:15:39,714 - INFO - Total messages: 20
+2026-01-19 00:15:39,715 - INFO - Errors: 0
+2026-01-19 00:15:39,718 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:15:49,716 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:15:49,809 - INFO - Resuming from message 20...
+2026-01-19 00:15:49,824 - INFO - Seeking to message 20...
+2026-01-19 00:15:54,358 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:15:54,367 - INFO - Migration completed!
+2026-01-19 00:15:54,368 - INFO - Total messages: 40
+2026-01-19 00:15:54,370 - INFO - Errors: 0
+2026-01-19 00:15:54,372 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:16:03,228 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:16:03,312 - INFO - Resuming from message 40...
+2026-01-19 00:16:03,326 - INFO - Seeking to message 40...
+2026-01-19 00:16:07,425 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:16:07,431 - INFO - Migration completed!
+2026-01-19 00:16:07,432 - INFO - Total messages: 60
+2026-01-19 00:16:07,433 - INFO - Errors: 0
+2026-01-19 00:16:07,434 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:18:02,357 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 00:18:02,439 - INFO - Resuming from message 60...
+2026-01-19 00:18:02,439 - INFO - Seeking to message 60...
+2026-01-19 00:18:07,418 - INFO - Session limit of 20 messages reached.
+2026-01-19 00:18:07,441 - INFO - Migration completed!
+2026-01-19 00:18:07,443 - INFO - Total messages: 80
+2026-01-19 00:18:07,446 - INFO - Errors: 0
+2026-01-19 00:18:07,448 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
