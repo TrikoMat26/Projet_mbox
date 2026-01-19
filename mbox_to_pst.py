@@ -1,5 +1,8 @@
 import win32com.client
+import pywintypes  # Explicit import for PyInstaller
+import win32timezone  # Required by pywintypes.Time()
 import os
+
 import sys
 import time
 import tempfile
@@ -12,6 +15,7 @@ from email import message_from_bytes
 import datetime
 import mimetypes
 import re
+
 
 # Global state for graceful shutdown
 _shutdown_requested = False
@@ -263,23 +267,12 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
     # 2. Set Dates (Critical for display)
     if date_obj:
         try:
-            # Convert timezone-aware datetime to naive local time for Outlook
-            if hasattr(date_obj, 'tzinfo') and date_obj.tzinfo is not None:
-                local_dt = date_obj.astimezone().replace(tzinfo=None)
-            else:
-                local_dt = date_obj
-            
-            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", local_dt) # PR_CLIENT_SUBMIT_TIME
-            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", local_dt) # PR_MESSAGE_DELIVERY_TIME
-        except Exception as date_err:
-            # Fallback: try with pywintypes
-            try:
-                import pywintypes
-                pywin_date = pywintypes.Time(date_obj.timestamp())
-                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", pywin_date)
-                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", pywin_date)
-            except:
-                pass
+            # Use pywintypes.Time which is the native COM date format
+            pywin_date = pywintypes.Time(date_obj.timestamp())
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", pywin_date) # PR_CLIENT_SUBMIT_TIME
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", pywin_date) # PR_MESSAGE_DELIVERY_TIME
+        except:
+            pass
 
     # 3. Set Sender Info
     if sender_name or sender_email:

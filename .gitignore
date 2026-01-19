@@ -1,0 +1,23 @@
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Migration temporary files
+migration_state.json
+problem_messages.json
+migration.log
+
+# Outlook temporary files
+_Temp_Migration_*
+
+# OS
+.DS_Store
+Thumbs.db
