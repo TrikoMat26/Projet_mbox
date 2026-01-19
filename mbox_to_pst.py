@@ -5,12 +5,26 @@ import time
 import tempfile
 import logging
 import json
+import signal
 from email.header import decode_header
 from email.utils import parsedate_to_datetime, getaddresses, formataddr, parseaddr
 from email import message_from_bytes
 import datetime
 import mimetypes
 import re
+
+# Global state for graceful shutdown
+_shutdown_requested = False
+_current_count = 0
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C gracefully by flagging shutdown and saving state."""
+    global _shutdown_requested
+    _shutdown_requested = True
+    logging.info("\n⚠ Interruption detected. Finishing current message and saving state...")
+
+# Register signal handler (Windows compatible)
+signal.signal(signal.SIGINT, signal_handler)
 
 def stream_mbox(mbox_path, start_at=0, progress_callback=None):
     """
@@ -156,6 +170,45 @@ logging.basicConfig(
 )
 
 STATE_FILE = "migration_state.json"
+PROBLEM_FILE = "problem_messages.json"
+
+def log_problem_message(msg_index, subject, sender, date_str, error_type, error_detail):
+    """Log a problematic message for later manual review."""
+    problems = []
+    if os.path.exists(PROBLEM_FILE):
+        try:
+            with open(PROBLEM_FILE, 'r', encoding='utf-8') as f:
+                problems = json.load(f)
+        except: pass
+    
+    # Decode sender if it's MIME-encoded
+    decoded_sender = sender
+    if sender:
+        try:
+            from email.header import decode_header
+            parts = decode_header(sender)
+            decoded_parts = []
+            for data, charset in parts:
+                if isinstance(data, bytes):
+                    decoded_parts.append(data.decode(charset or 'utf-8', errors='replace'))
+                else:
+                    decoded_parts.append(data)
+            decoded_sender = ''.join(decoded_parts)
+        except:
+            decoded_sender = sender
+    
+    problems.append({
+        "message_index": msg_index,
+        "subject": subject[:100] if subject else "(No Subject)",
+        "sender": decoded_sender[:100] if decoded_sender else "",
+        "date": date_str or "",
+        "error_type": error_type,
+        "error_detail": str(error_detail)[:500],
+        "logged_at": datetime.datetime.now().isoformat()
+    })
+    
+    with open(PROBLEM_FILE, 'w', encoding='utf-8') as f:
+        json.dump(problems, f, ensure_ascii=False, indent=2)
 
 def decode_mime_header(header_value):
     if not header_value:
@@ -187,46 +240,66 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
     """
     try:
         prop_accessor = mail_item.PropertyAccessor
-        
-        # 1. FORCE CLEAR DRAFT STATUS FIRST
-        # PR_MESSAGE_FLAGS (0x0E070003) -> 1 = Read, Sent.
-        prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E070003", 1)
-        
-        # PR_MESSAGE_STATUS (0x0E170003) -> 0 = Clean state
-        prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E170003", 0)
-        
-        # PR_ICON_INDEX (0x10800003) -> 256 (Standard Unopened Mail Icon)
-        try:
-             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x10800003", 256)
-        except: pass
-
-        # 2. Set Dates (Critical for display)
-        if date_obj:
-            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", date_obj) # PR_CLIENT_SUBMIT_TIME
-            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", date_obj) # PR_MESSAGE_DELIVERY_TIME
-
     except Exception as e:
-        # logging.warning(f"Error setting basic MAPI flags: {e}")
-        pass
-
+        logging.warning(f"Cannot get PropertyAccessor: {e}")
+        return
+    
+    # 1. FORCE CLEAR DRAFT STATUS FIRST
+    # PR_MESSAGE_FLAGS (0x0E070003) -> 1 = Read, Sent.
     try:
-         # 3. Set Sender Info (Must happen after clearing draft status for UI to respect it)
-        if sender_name or sender_email:
-            name = sender_name or sender_email
-            email = sender_email or name
+        prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E070003", 1)
+    except: pass
+    
+    # PR_MESSAGE_STATUS - skip this as it often fails
+    # try:
+    #     prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E170003", 0)
+    # except: pass
+    
+    # PR_ICON_INDEX (0x10800003) -> 256 (Standard Unopened Mail Icon)
+    try:
+        prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x10800003", 256)
+    except: pass
+
+    # 2. Set Dates (Critical for display)
+    if date_obj:
+        try:
+            # Convert timezone-aware datetime to naive local time for Outlook
+            if hasattr(date_obj, 'tzinfo') and date_obj.tzinfo is not None:
+                local_dt = date_obj.astimezone().replace(tzinfo=None)
+            else:
+                local_dt = date_obj
             
-            # Basic props
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", local_dt) # PR_CLIENT_SUBMIT_TIME
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", local_dt) # PR_MESSAGE_DELIVERY_TIME
+        except Exception as date_err:
+            # Fallback: try with pywintypes
+            try:
+                import pywintypes
+                pywin_date = pywintypes.Time(date_obj.timestamp())
+                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x00390040", pywin_date)
+                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E060040", pywin_date)
+            except:
+                pass
+
+    # 3. Set Sender Info
+    if sender_name or sender_email:
+        name = sender_name or sender_email
+        email = sender_email or name
+        
+        try:
             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1A001F", name) # PR_SENDER_NAME
             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0042001F", name) # PR_SENT_REPRESENTING_NAME
-            
-            if "@" in email:
-                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1F001F", email) # PR_SENDER_EMAIL_ADDRESS
-                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1E001F", "SMTP") # PR_SENDER_ADDRTYPE
-                 
-                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0065001F", email) # PR_SENT_REPRESENTING_EMAIL_ADDRESS
-                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0064001F", "SMTP") # PR_SENT_REPRESENTING_ADDRTYPE
-    except Exception:
-        pass
+        except: pass
+        
+        if "@" in email:
+            try:
+                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1F001F", email) # PR_SENDER_EMAIL_ADDRESS
+                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0C1E001F", "SMTP") # PR_SENDER_ADDRTYPE
+                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0065001F", email) # PR_SENT_REPRESENTING_EMAIL_ADDRESS
+                prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0064001F", "SMTP") # PR_SENT_REPRESENTING_ADDRTYPE
+            except: pass
+
+
 
 def save_state(count):
     with open(STATE_FILE, "w") as f:
@@ -437,21 +510,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     
     progress_bar = None
     last_progress_mb = 0
-    
-    # For unlimited mode: create progress bar immediately (file-based)
-    if TQDM_AVAILABLE and not limit:
-        progress_bar = tqdm(total=int(file_size_mb), desc="Processing", unit="MB",
-                           file=sys.stderr, dynamic_ncols=True,
-                           bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}MB [{elapsed}<{remaining}]')
-    
-    # Progress callback for the streaming parser (unlimited mode only)
-    def progress_callback(pos, total, msg_idx, target_idx):
-        nonlocal last_progress_mb
-        if progress_bar:
-            current_mb = int(pos / (1024 * 1024))
-            if current_mb > last_progress_mb:
-                progress_bar.update(current_mb - last_progress_mb)
-                last_progress_mb = current_mb
+    progress_bar_created = False
     
     # Show info about skipping if resuming
     if start_at > 0:
@@ -459,9 +518,29 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     
     # Use streaming MBOX parser for real-time progress
     messages_processed = 0
-    progress_bar_created_for_limit = False
     
-    for i, file_pos, message in stream_mbox(mbox_path, start_at=0, progress_callback=progress_callback if not limit else None):
+    for i, file_pos, message in stream_mbox(mbox_path, start_at=0, progress_callback=None):
+        # Skip to resume point
+        if i < start_at:
+            continue
+        
+        # Create progress bar only when processing actually starts (after seek phase)
+        if TQDM_AVAILABLE and not progress_bar_created:
+            if limit:
+                progress_bar = tqdm(total=limit, desc="Processing", unit="msg",
+                                   file=sys.stderr, dynamic_ncols=True, leave=False,
+                                   bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
+            else:
+                progress_bar = tqdm(total=int(file_size_mb), desc="Processing", unit="MB",
+                                   file=sys.stderr, dynamic_ncols=True, leave=False,
+                                   bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}MB [{elapsed}<{remaining}]')
+                # Set initial position based on file position
+                initial_mb = int(file_pos / (1024 * 1024))
+                if initial_mb > 0:
+                    progress_bar.update(initial_mb)
+                    last_progress_mb = initial_mb
+            progress_bar_created = True
+        
         # Update progress based on file position (for unlimited mode)
         if not limit and progress_bar:
             current_mb = int(file_pos / (1024 * 1024))
@@ -469,20 +548,16 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                 progress_bar.update(current_mb - last_progress_mb)
                 last_progress_mb = current_mb
         
-        # Skip to resume point
-        if i < start_at:
-            continue
-        
-        # Create progress bar for limit mode only when processing actually starts
-        if limit and TQDM_AVAILABLE and not progress_bar_created_for_limit:
-            progress_bar = tqdm(total=limit, desc="Processing", unit="msg",
-                               file=sys.stderr, dynamic_ncols=True,
-                               bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
-            progress_bar_created_for_limit = True
             
-        if effective_limit and i >= effective_limit:
 
+        if effective_limit and i >= effective_limit:
             logging.info(f"Session limit of {limit} messages reached.")
+            break
+        
+        # Check for graceful shutdown request (Ctrl+C)
+        if _shutdown_requested:
+            logging.info(f"Shutdown requested. Saving state at message {count}...")
+            save_state(count)
             break
 
         mail = None
@@ -499,7 +574,8 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             if message['date']:
                 try:
                     date_val = parsedate_to_datetime(message['date'])
-                except: pass
+                except:
+                    pass
 
             # X-Gmail-Labels
             labels_headers = message.get_all('X-Gmail-Labels', [])
@@ -591,6 +667,11 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                                     
                         except Exception as att_err:
                             logging.warning(f"Error attached/inline {filename}: {att_err}")
+                            # Log for manual review
+                            date_str = str(message['date']) if message['date'] else ""
+                            log_problem_message(i, subject, sender_header, date_str, 
+                                              "attachment_error", f"{filename}: {att_err}")
+
             else:
                 try:
                     payload = message.get_payload(decode=True)
