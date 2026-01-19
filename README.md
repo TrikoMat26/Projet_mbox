@@ -1,4 +1,4 @@
-# Migration Gmail (MBOX) vers Outlook (PST avec catégories)
+# Migration Gmail (MBOX) vers Outlook (PST avec catégories) 
 
 Ce script permet de convertir un fichier `.mbox` (export Google Takeout) en un fichier `.pst` compatible avec Outlook Desktop, tout en transformant les étiquettes Gmail (`labels`) en **catégories Outlook**.
 
