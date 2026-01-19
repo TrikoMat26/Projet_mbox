@@ -32,6 +32,9 @@ Ce script permet de convertir un fichier `.mbox` (export Google Takeout) en un f
 ## 🛠️ Prérequis
 
 1.  **Windows** avec **Microsoft Outlook** installé
+2.  Démarer Outlook sans comptes avec la commande
+    --> Alt+R "outlook.exe /PIM nom_de_profile" (crée le profile)
+    --> Alt+R "outlook.exe /profile nom_de_profile" (ouvre le profile)
 2.  **Python 3.x**
 3.  Bibliothèques Python :
     ```bash
