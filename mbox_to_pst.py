@@ -499,10 +499,14 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
 
     count = 0
     errors = 0
+    duplicates_skipped = 0
     start_time = time.time()
     
     # Effective limit calculation
     effective_limit = (start_at + limit) if limit else None
+
+    # Deduplication: track Message-IDs to avoid importing duplicates
+    seen_message_ids = set()
 
     # Setup progress bar
     file_size = os.path.getsize(mbox_path)
@@ -518,6 +522,7 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     
     # Use streaming MBOX parser for real-time progress
     messages_processed = 0
+
     
     for i, file_pos, message in stream_mbox(mbox_path, start_at=0, progress_callback=None):
         # Skip to resume point
@@ -562,12 +567,23 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
 
         mail = None
         try:
+            # Check for duplicates based on Message-ID
+            message_id = message.get('Message-ID', '') or message.get('Message-Id', '')
+            if message_id:
+                message_id = message_id.strip()
+                if message_id in seen_message_ids:
+                    duplicates_skipped += 1
+                    count = i + 1  # Update count for state saving
+                    continue  # Skip this duplicate
+                seen_message_ids.add(message_id)
+            
             # Extract headers
             subject = decode_mime_header(message['subject']) or "(No Subject)"
             sender_header = message['from'] or ""
             to_header = message['to'] or ""
             sender_name, sender_email = parse_sender(sender_header)
             to = normalize_addresses(to_header)
+
             
             # Date parsing
             date_val = None
@@ -749,9 +765,11 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
 
     save_state(count)
     logging.info(f"Migration completed!")
-    logging.info(f"Total messages: {count}")
+    logging.info(f"Total messages processed: {count}")
+    logging.info(f"Duplicates skipped: {duplicates_skipped}")
     logging.info(f"Errors: {errors}")
     logging.info(f"PST: {pst_abs_path}")
+
 
 if __name__ == "__main__":
     import argparse

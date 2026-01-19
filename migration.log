@@ -65,3 +65,47 @@
 2026-01-19 09:06:13,430 - INFO - Total messages: 467
 2026-01-19 09:06:13,431 - INFO - Errors: 0
 2026-01-19 09:06:13,433 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:11:44,920 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:11:45,011 - INFO - Resuming from message 380...
+2026-01-19 09:11:45,012 - INFO - Seeking to message 380...
+2026-01-19 09:12:11,799 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:12:13,586 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:12:14,601 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:12:16,613 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:12:17,259 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:12:19,402 - INFO - Session limit of 50 messages reached.
+2026-01-19 09:12:19,410 - INFO - Migration completed!
+2026-01-19 09:12:19,411 - INFO - Total messages: 430
+2026-01-19 09:12:19,412 - INFO - Errors: 0
+2026-01-19 09:12:19,414 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:37:51,667 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:37:51,753 - INFO - Resuming from message 380...
+2026-01-19 09:37:51,753 - INFO - Seeking to message 380...
+2026-01-19 09:38:18,550 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:38:20,327 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:38:21,316 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:38:23,264 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:38:23,910 - WARNING - Error attached/inline macs.csv: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-19 09:38:26,156 - INFO - Session limit of 50 messages reached.
+2026-01-19 09:38:26,166 - INFO - Migration completed!
+2026-01-19 09:38:26,166 - INFO - Total messages: 430
+2026-01-19 09:38:26,167 - INFO - Errors: 0
+2026-01-19 09:38:26,168 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:50:05,649 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:50:05,734 - INFO - Resuming from message 430...
+2026-01-19 09:50:05,734 - INFO - Seeking to message 430...
+2026-01-19 09:50:38,269 - INFO - Session limit of 50 messages reached.
+2026-01-19 09:50:38,279 - INFO - Migration completed!
+2026-01-19 09:50:38,280 - INFO - Total messages processed: 480
+2026-01-19 09:50:38,281 - INFO - Duplicates skipped: 36
+2026-01-19 09:50:38,283 - INFO - Errors: 0
+2026-01-19 09:50:38,284 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:52:28,885 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-19 09:52:28,971 - INFO - Resuming from message 380...
+2026-01-19 09:52:28,971 - INFO - Seeking to message 380...
+2026-01-19 09:52:55,869 - INFO - Session limit of 50 messages reached.
+2026-01-19 09:52:55,878 - INFO - Migration completed!
+2026-01-19 09:52:55,878 - INFO - Total messages processed: 430
+2026-01-19 09:52:55,880 - INFO - Duplicates skipped: 29
+2026-01-19 09:52:55,881 - INFO - Errors: 0
+2026-01-19 09:52:55,882 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
