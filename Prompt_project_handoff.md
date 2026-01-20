@@ -1,0 +1,2 @@
+Dans le but de démarrer un autre Chat avec un LLM, et pouvoir apporter des corrections et améliorations future, donne moi toutes les informations concernant ce projet à ce jour, avec les problèmes rencontrés, leurs solutions techniques, et les écueils à éviter, ainsi que les caractéristiques techniques choisies et les explications de ces choix par rapport aux besoins du projet.
+Pour cela reprend tous l'historique de cette discussion
