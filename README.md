@@ -81,3 +81,61 @@ python mbox_to_pst.py "fichier.mbox" "sortie.pst" --limit 100
 - **Vitesse** : ~2-5 messages/seconde (les fichiers de 10 Go peuvent prendre plusieurs heures)
 - **Ne pas fermer Outlook** pendant l'exécution du script
 - **Doublons Gmail** : automatiquement filtrés grâce à la déduplication par Message-ID
+
+---
+
+## 🏷️ Scripts de Gestion des Catégories Outlook (PowerShell)
+
+Après migration du PST vers un autre PC, les catégories peuvent ne pas être reconnues par Outlook (affichage blanc/gris). Ces scripts permettent de synchroniser et gérer les catégories.
+
+### `sync_categories.ps1` — Synchronisation et Réparation
+
+**Utilité :** Importer les catégories d'un PST vers la "Master Category List" d'Outlook et réparer les étiquettes fusionnées.
+
+**Fonctionnement :**
+1. Parcourt récursivement tous les messages du PST sélectionné.
+2. Découpe les étiquettes fusionnées (ex: `"A; B; C"` → trois catégories).
+3. Ajoute chaque catégorie à la Master List si elle n'existe pas.
+4. Ré-enregistre les catégories proprement sur chaque message.
+
+**Cas d'usage :**
+- Post-migration sur un nouveau PC
+- Réparation des couleurs de catégories
+
+---
+
+### `manage_categories.ps1` — Gestion et Nettoyage
+
+**Utilité :** Lister, supprimer sélectivement ou en masse les catégories Outlook.
+
+**Options :**
+- **[N]** : Supprimer par numéro(s) (ex: `1,5,10,20`)
+- **[A]** : Supprimer TOUTES les catégories
+- **[Q]** : Quitter
+
+**Modes de suppression :**
+- **[1]** : Catalogue Outlook uniquement
+- **[2]** : Catalogue + tous les messages (Nettoyage Complet)
+
+**Cas d'usage :**
+- Nettoyer les catégories fusionnées créées par erreur
+- Remise à zéro avant resynchronisation
+- Supprimer des catégories obsolètes (Spam, Forums, etc.)
+
+---
+
+### 📋 Procédure Recommandée (PC de destination)
+
+```powershell
+# 1. Nettoyer (si nécessaire)
+PowerShell.exe -ExecutionPolicy Bypass -File .\manage_categories.ps1
+# → [A] pour tout sélectionner → [2] nettoyage complet → [0] tous les comptes
+
+# 2. Synchroniser
+PowerShell.exe -ExecutionPolicy Bypass -File .\sync_categories.ps1
+# → Sélectionner le PST → Laisser réparer
+
+# 3. Dans Outlook : Classer > Toutes les catégories > Attribuer les couleurs
+```
+
+> **Note :** Les scripts sont encodés en UTF-8 avec BOM pour gérer les caractères accentués.

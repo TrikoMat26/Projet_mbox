@@ -1,4 +1,4 @@
-# Script de synchronisation des catégories Outlook
+﻿# Script de synchronisation des catégories Outlook
 # Ce script scanne un fichier PST et ajoute toutes les catégories trouvées à votre liste principale Outlook.
 
 $outlook = New-Object -ComObject Outlook.Application
@@ -27,25 +27,44 @@ foreach ($cat in $namespace.Categories) {
     $masterCategories[$cat.Name] = $true
 }
 
-# 3. Fonction récursive pour scanner les dossiers
+# 3. Fonction récursive pour scanner et REPARER les catégories
 function Scan-FolderCategories($folder) {
-    Write-Host "  Lecture de : $($folder.Name) ($($folder.Items.Count) messages)" -ForegroundColor Gray
+    Write-Host "`nScan de : $($folder.Name) ($($folder.Items.Count) messages)" -ForegroundColor Yellow
     
+    $count = 0
     foreach ($item in $folder.Items) {
         if ($item.Categories) {
-            # Outlook can use comma or semicolon depending on locale
-            $cats = $item.Categories -split '[;,]'
-            foreach ($c in $cats) {
-                $cleanCat = $c.Trim()
-                if ($cleanCat -and -not $masterCategories.ContainsKey($cleanCat)) {
-                    try {
-                        Write-Host "    [NEW] Ajout de la catégorie : $cleanCat" -ForegroundColor Green
-                        $namespace.Categories.Add($cleanCat)
-                        $masterCategories[$cleanCat] = $true
+            # 1. On découpe et on nettoie
+            $rawCats = $item.Categories -split '[;,]'
+            $cleanParts = New-Object System.Collections.Generic.List[string]
+            
+            foreach ($c in $rawCats) {
+                $trimmed = $c.Trim()
+                if ($trimmed) {
+                    $cleanParts.Add($trimmed)
+                    # 2. On s'assure que ça existe dans la Master List
+                    if (-not $masterCategories.ContainsKey($trimmed)) {
+                        try {
+                            Write-Host "    [NEW] Ajout Master List : $trimmed" -ForegroundColor Green
+                            $namespace.Categories.Add($trimmed)
+                            $masterCategories[$trimmed] = $true
+                        }
+                        catch {}
                     }
-                    catch {
-                        Write-Host "    Erreur lors de l'ajout de $cleanCat" -ForegroundColor Red
-                    }
+                }
+            }
+
+            # 3. REPARATION : On ré-écrit les catégories proprement sur le message
+            $newCatString = [string]::Join("; ", $cleanParts)
+            if ($item.Categories -ne $newCatString) {
+                try {
+                    $item.Categories = $newCatString
+                    $item.Save()
+                    $count++
+                    if ($count % 50 -eq 0) { Write-Host "  > $count messages réparés..." -ForegroundColor Gray }
+                }
+                catch {
+                    Write-Host "  ! Erreur sur message : $($item.Subject)" -ForegroundColor Red
                 }
             }
         }
