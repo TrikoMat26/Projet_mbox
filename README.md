@@ -53,6 +53,9 @@ python mbox_to_pst.py "chemin/vers/fichier.mbox" "chemin/vers/sortie.pst"
 python mbox_to_pst.py "fichier.mbox" "sortie.pst" --limit 100
 ```
 
+python mbox_to_pst.py "E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox" "E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst" --limit 20
+
+
 ### Options disponibles
 
 | Option | Description |

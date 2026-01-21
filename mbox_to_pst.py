@@ -2,6 +2,7 @@ import win32com.client
 import pywintypes  # Explicit import for PyInstaller
 import win32timezone  # Required by pywintypes.Time()
 import os
+import mailbox  # Standard MBOX parser - more reliable than custom streaming
 
 import sys
 import time
@@ -46,7 +47,10 @@ def stream_mbox(mbox_path, start_at=0, progress_callback=None):
         (message_index, file_position, email.message.Message)
     """
     file_size = os.path.getsize(mbox_path)
-    mbox_from_pattern = re.compile(rb'^From .+\r?\n', re.MULTILINE)
+    # MBOX message boundary pattern
+    # Google Takeout uses: "From 1234567890@xxx Mon Jan 21 00:00:00 +0000 2026"
+    # We match "From " followed by non-space chars, then a space (simple but effective)
+    mbox_from_pattern = re.compile(rb'^From \S+ .+\r?\n', re.MULTILINE)
     
     with open(mbox_path, 'rb') as f:
         message_index = 0
@@ -237,9 +241,9 @@ def decode_mime_header(header_value):
     except:
         return str(header_value)
 
-def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
+def set_item_properties(mail_item, date_obj, sender_name="", sender_email="", references="", in_reply_to=""):
     """
-    Uses PropertyAccessor to set the sent/received date, message flags, and SENDER info.
+    Uses PropertyAccessor to set the sent/received date, message flags, SENDER info, and threading headers.
     Must be called BEFORE the first Save() to effectively clear Draft status.
     """
     try:
@@ -291,6 +295,20 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email=""):
                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0065001F", email) # PR_SENT_REPRESENTING_EMAIL_ADDRESS
                 prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0064001F", "SMTP") # PR_SENT_REPRESENTING_ADDRTYPE
             except: pass
+
+    # 4. Set Threading Headers for Conversation Grouping
+    if references:
+        try:
+            # PR_INTERNET_REFERENCES (0x1039001F)
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x1039001F", references)
+        except: pass
+    
+    if in_reply_to:
+        try:
+            # PR_IN_REPLY_TO_ID (0x1042001F)
+            clean_reply_to = in_reply_to.strip().strip('<>')
+            prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x1042001F", clean_reply_to)
+        except: pass
 
 
 
@@ -513,38 +531,36 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
     if start_at > 0:
         logging.info(f"Seeking to message {start_at}...")
     
-    # Use streaming MBOX parser for real-time progress
+    # Use standard mailbox library for reliable MBOX parsing
+    # (Custom streaming parser had bugs that truncated some messages)
     messages_processed = 0
-
+    logging.info("Opening MBOX file with standard parser...")
+    mbox = mailbox.mbox(mbox_path)
+    total_messages = len(mbox) if hasattr(mbox, '__len__') else None
     
-    for i, file_pos, message in stream_mbox(mbox_path, start_at=0, progress_callback=None):
+    if total_messages:
+        logging.info(f"Found {total_messages} messages in MBOX")
+    
+    for i, message in enumerate(mbox):
         # Skip to resume point
         if i < start_at:
             continue
         
-        # Create progress bar only when processing actually starts (after seek phase)
+        # Create progress bar only when processing actually starts
         if TQDM_AVAILABLE and not progress_bar_created:
             if limit:
                 progress_bar = tqdm(total=limit, desc="Processing", unit="msg",
+                                   file=sys.stderr, dynamic_ncols=True, leave=False,
+                                   bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
+            elif total_messages:
+                progress_bar = tqdm(total=total_messages - start_at, desc="Processing", unit="msg",
                                    file=sys.stderr, dynamic_ncols=True, leave=False,
                                    bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
             else:
                 progress_bar = tqdm(total=int(file_size_mb), desc="Processing", unit="MB",
                                    file=sys.stderr, dynamic_ncols=True, leave=False,
                                    bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}MB [{elapsed}<{remaining}]')
-                # Set initial position based on file position
-                initial_mb = int(file_pos / (1024 * 1024))
-                if initial_mb > 0:
-                    progress_bar.update(initial_mb)
-                    last_progress_mb = initial_mb
             progress_bar_created = True
-        
-        # Update progress based on file position (for unlimited mode)
-        if not limit and progress_bar:
-            current_mb = int(file_pos / (1024 * 1024))
-            if current_mb > last_progress_mb:
-                progress_bar.update(current_mb - last_progress_mb)
-                last_progress_mb = current_mb
         
             
 
@@ -585,6 +601,10 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                     date_val = parsedate_to_datetime(message['date'])
                 except:
                     pass
+
+            # Threading headers for conversation grouping
+            references = message.get('References', '') or ''
+            in_reply_to = message.get('In-Reply-To', '') or ''
 
             # X-Gmail-Labels
             labels_headers = message.get_all('X-Gmail-Labels', [])
@@ -653,29 +673,88 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                         else:
                             ext = mimetypes.guess_extension(content_type) or ".dat"
                             filename = f"attachment_{os.urandom(4).hex()}{ext}"
+                        
+                        # Sanitize filename for filesystem
+                        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
                             
                         try:
+                            # Robust payload extraction with fallback
                             payload = part.get_payload(decode=True)
+                            
+                            if payload is None:
+                                # Fallback: manual decoding for non-standard encodings
+                                raw_payload = part.get_payload(decode=False)
+                                transfer_encoding = (part.get('Content-Transfer-Encoding') or '').lower().strip()
+                                
+                                if raw_payload:
+                                    if transfer_encoding == 'base64':
+                                        import base64
+                                        try:
+                                            # Handle string or bytes
+                                            if isinstance(raw_payload, str):
+                                                raw_payload = raw_payload.encode('ascii', errors='ignore')
+                                            payload = base64.b64decode(raw_payload)
+                                        except Exception as b64_err:
+                                            logging.debug(f"Base64 decode failed for {filename}: {b64_err}")
+                                    elif transfer_encoding == 'quoted-printable':
+                                        import quopri
+                                        try:
+                                            if isinstance(raw_payload, str):
+                                                raw_payload = raw_payload.encode('ascii', errors='ignore')
+                                            payload = quopri.decodestring(raw_payload)
+                                        except Exception as qp_err:
+                                            logging.debug(f"Quoted-printable decode failed for {filename}: {qp_err}")
+                                    elif transfer_encoding in ('7bit', '8bit', 'binary', ''):
+                                        # No encoding, use as-is
+                                        if isinstance(raw_payload, str):
+                                            payload = raw_payload.encode('utf-8', errors='replace')
+                                        else:
+                                            payload = raw_payload
+                            
                             if payload:
-                                temp_path = os.path.join(attachments_temp_dir.name, filename)
+                                # Use unique temp filename to avoid conflicts with multiple attachments
+                                import uuid
+                                base_name, ext = os.path.splitext(filename)
+                                unique_filename = f"{base_name}_{uuid.uuid4().hex[:8]}{ext}"
+                                temp_path = os.path.join(attachments_temp_dir.name, unique_filename)
+                                
+                                # Write with explicit flush and close
                                 with open(temp_path, "wb") as f:
                                     f.write(payload)
+                                    f.flush()
+                                    os.fsync(f.fileno())
                                 
-                                attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
+                                # Verify file integrity
+                                written_size = os.path.getsize(temp_path)
+                                expected_size = len(payload)
+                                if written_size != expected_size:
+                                    logging.warning(f"Size mismatch for {filename}: expected {expected_size}, got {written_size}")
                                 
-                                if content_id:
-                                    cid_clean = content_id.strip('<>')
-                                    try:
-                                        attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
-                                    except: pass
-                                
-                                try:
+                                if written_size == 0:
+                                    logging.warning(f"Empty attachment written: {filename}")
                                     os.remove(temp_path)
-                                except OSError:
-                                    pass
+                                else:
+                                    attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
+                                    
+                                    if content_id:
+                                        cid_clean = content_id.strip('<>')
+                                        try:
+                                            attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
+                                        except: pass
+                                    
+                                    try:
+                                        os.remove(temp_path)
+                                    except OSError:
+                                        pass
+                            else:
+                                logging.warning(f"No payload extracted for attachment: {filename}")
+                                transfer_enc = part.get('Content-Transfer-Encoding', 'none')
+                                logging.debug(f"  Content-Type: {content_type}, Transfer-Encoding: {transfer_enc}")
                                     
                         except Exception as att_err:
-                            logging.warning(f"Error attached/inline {filename}: {att_err}")
+                            logging.warning(f"Attachment error [{filename}]: {att_err}")
+                            transfer_enc = part.get('Content-Transfer-Encoding', 'none')
+                            logging.debug(f"  Content-Type: {content_type}, Transfer-Encoding: {transfer_enc}")
                             # Log for manual review
                             date_str = str(message['date']) if message['date'] else ""
                             log_problem_message(i, subject, sender_header, date_str, 
@@ -703,8 +782,9 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             except Exception:
                 pass
             
-            # Set MAPI Properties BEFORE Save
-            set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email)
+            # Set MAPI Properties BEFORE Save (including threading headers)
+            set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email,
+                                references=references, in_reply_to=in_reply_to)
             
             # Save & Move
             mail.Save()

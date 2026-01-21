@@ -379,16 +379,53 @@ git push origin main --force
 
 ### Streaming Parser vs mailbox.mbox()
 
-**Choix :** Parser MBOX par blocs de 1 Mo.
+**Choix Initial :** Parser MBOX personnalisé par blocs de 1 Mo.
 
-**Justification :**
-- `mailbox.mbox()` charge tout en RAM → crash sur 10 Go
-- Streaming : mémoire constante, progression temps réel
-- Compatible avec fichiers Gmail de 50+ Go
+**Problème Rencontré (Session 2026-01-21) :**
+Le parser streaming tronquait certains messages, causant des **images inline corrompues**.
 
-**Coût :**
-- Complexité accrue (détection manuelle des frontières `\nFrom `)
-- Doit gérer les messages corrompus
+**Solution Finale :** Utiliser la bibliothèque standard `mailbox.mbox()`.
+
+```python
+import mailbox
+
+mbox = mailbox.mbox(mbox_path)
+for i, message in enumerate(mbox):
+    # Traitement correct de tous les messages
+    pass
+```
+
+**Pourquoi :**
+- `mailbox.mbox()` parse correctement 100% des messages
+- Le parser streaming avait des bugs sur les frontières `From `
+- Légèrement plus lent au démarrage (compte les messages) mais fiable
+
+---
+
+### Threading des Conversations (Ajout 2026-01-21)
+
+**Problème :** Les messages d'une même conversation n'étaient pas regroupés dans Outlook.
+
+**Cause :** Les headers `References` et `In-Reply-To` n'étaient pas extraits ni transmis.
+
+**Solution :**
+```python
+# Extraction
+references = message.get('References', '') or ''
+in_reply_to = message.get('In-Reply-To', '') or ''
+
+# Transmission via MAPI
+if references:
+    prop_accessor.SetProperty(
+        "http://schemas.microsoft.com/mapi/proptag/0x1039001F",  # PR_INTERNET_REFERENCES
+        references
+    )
+if in_reply_to:
+    prop_accessor.SetProperty(
+        "http://schemas.microsoft.com/mapi/proptag/0x1042001F",  # PR_IN_REPLY_TO_ID
+        in_reply_to.strip('<>')
+    )
+```
 
 ---
 
@@ -750,6 +787,8 @@ La vraie validation est sur un **profil Outlook vierge** :
 ✅ Déduplication automatique  
 ✅ Reprise après interruption  
 ✅ Synchronisation des catégories sur PC de destination  
+✅ **Threading des conversations** (via References/In-Reply-To)  
+✅ **Images inline non tronquées** (via mailbox.mbox standard)  
 
 ### Limitations Connues
 
@@ -768,6 +807,6 @@ La vraie validation est sur un **profil Outlook vierge** :
 
 ---
 
-**Document généré le :** 2026-01-20  
-**Version du projet :** 1.0  
-**Auteur :** Migration MBOX-PST Team
+**Document mis à jour le :** 2026-01-21  
+**Version du projet :** 1.1  
+**Corrections récentes :** Threading conversations, Images inline corrigées

@@ -1,27 +1,11 @@
-2026-01-19 10:33:40,250 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-19 10:34:27,495 - INFO - 
-⚠ Interruption detected. Finishing current message and saving state...
-2026-01-19 10:34:27,502 - INFO - Shutdown requested. Saving state at message 486...
-2026-01-19 10:34:27,510 - INFO - Migration completed!
-2026-01-19 10:34:27,511 - INFO - Total messages processed: 486
-2026-01-19 10:34:27,512 - INFO - Duplicates skipped: 257
-2026-01-19 10:34:27,513 - INFO - Errors: 0
-2026-01-19 10:34:27,515 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-19 10:34:49,654 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-19 10:34:49,737 - INFO - Resuming from message 486...
-2026-01-19 10:34:49,737 - INFO - Seeking to message 486...
-2026-01-19 10:36:06,249 - INFO - 
-⚠ Interruption detected. Finishing current message and saving state...
-2026-01-19 10:36:06,302 - INFO - Shutdown requested. Saving state at message 1092...
-2026-01-19 10:36:06,309 - INFO - Migration completed!
-2026-01-19 10:36:06,309 - INFO - Total messages processed: 1092
-2026-01-19 10:36:06,312 - INFO - Duplicates skipped: 252
-2026-01-19 10:36:06,314 - INFO - Errors: 0
-2026-01-19 10:36:06,315 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-19 11:23:13,554 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
-2026-01-19 11:23:17,591 - INFO - Session limit of 50 messages reached.
-2026-01-19 11:23:17,598 - INFO - Migration completed!
-2026-01-19 11:23:17,599 - INFO - Total messages processed: 50
-2026-01-19 11:23:17,600 - INFO - Duplicates skipped: 20
-2026-01-19 11:23:17,601 - INFO - Errors: 0
-2026-01-19 11:23:17,602 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst
+2026-01-21 15:26:30,658 - INFO - Opening/Creating PST: E:\Sauveguarde_Messages_GMAIL\test_fix.pst
+2026-01-21 15:26:30,897 - INFO - Opening MBOX file with standard parser...
+2026-01-21 15:28:12,061 - INFO - Found 16511 messages in MBOX
+2026-01-21 15:28:17,769 - WARNING - Attachment error [Nouvelle commande CAC-EME24082901.eml]: a bytes-like object is required, not 'list'
+2026-01-21 15:28:31,661 - WARNING - Attachment error [macs.csv]: (-2147352567, 'Une exception s’est produite.', (4096, 'Microsoft Outlook', 'La taille du fichier que vous êtes en train de joindre est supérieure à la taille maximale autorisée par le serveur. Essayez plutôt de placer votre fichier dans un emplacement partagé, puis d’envoyer un lien menant à celui-ci.', None, 0, -2147467259), None)
+2026-01-21 15:29:00,937 - INFO - Session limit of 500 messages reached.
+2026-01-21 15:29:00,946 - INFO - Migration completed!
+2026-01-21 15:29:00,946 - INFO - Total messages processed: 500
+2026-01-21 15:29:00,946 - INFO - Duplicates skipped: 0
+2026-01-21 15:29:00,946 - INFO - Errors: 0
+2026-01-21 15:29:00,946 - INFO - PST: E:\Sauveguarde_Messages_GMAIL\test_fix.pst
