@@ -1,144 +1,136 @@
-# Migration Gmail (MBOX) vers Outlook (PST avec catégories) 
+# Migration Gmail (MBOX) vers Outlook (PST avec catégories)
 
-Ce script permet de convertir un fichier `.mbox` (export Google Takeout) en un fichier `.pst` compatible avec Outlook Desktop, tout en transformant les étiquettes Gmail (`labels`) en **catégories Outlook**.
+Ce script permet de convertir un fichier `.mbox` (export Google Takeout) ou un dossier de fichiers `.mbox` en un fichier `.pst` compatible avec Outlook Desktop, tout en transformant les étiquettes Gmail (`labels`) en **catégories Outlook** avec conservation de leurs couleurs d'origine d'un PC à un autre.
+
+---
 
 ## 🚀 Fonctionnalités
 
 ### Conversion et Métadonnées
-- ✅ **Conversion des labels en catégories** : préserve l'organisation Gmail sans dupliquer les messages
-- ✅ **Conservation des métadonnées** : Sujet, Expéditeur, Destinataire, Date, Pièces jointes
-- ✅ **Support du HTML et de l'UTF-8** : préserve la mise en forme et les caractères spéciaux
-- ✅ **Décodage MIME complet** : noms d'expéditeurs avec accents correctement affichés
+- **Conversion des labels en catégories** : préserve l'organisation Gmail sans dupliquer les messages.
+- **Conservation des métadonnées** : Sujet, Expéditeur, Destinataire, Date, Pièces jointes.
+- **Support HTML et UTF-8** : préserve la mise en forme et les caractères spéciaux.
+- **Décodage MIME complet** : noms d'expéditeurs avec accents correctement affichés.
+- **Threading des conversations** : regroupe automatiquement les messages d'un même fil dans Outlook (via les en-têtes `References` et `In-Reply-To`).
 
-### Performance et Fichiers Volumineux
-- ✅ **Parser MBOX streaming** : lecture par blocs de 1 Mo au lieu du chargement mémoire complet
-- ✅ **Optimisé pour les gros volumes** : testé avec des fichiers jusqu'à 10 Go
-- ✅ **Barre de progression en temps réel** : affichage fluide basé sur la position dans le fichier
+### Rendu et Performance (Optimisé)
+- **Liaison anticipée (Early Binding COM)** : utilise `EnsureDispatch` pour accélérer de façon significative les interactions avec Outlook COM (avec fallback transparent vers `Dispatch` standard).
+- **Rendu parfait des images inline** : applique les propriétés MAPI complexes (`PR_ATTACH_FLAGS`, `PR_ATTACH_MIME_TAG`, `PR_ATTACHMENT_HIDDEN`) pour que les images s'affichent correctement dans le corps HTML sans apparaître en doublon dans la barre des pièces jointes d'Outlook.
+- **Parser MBOX standard** : lecture robuste via la bibliothèque standard de Python pour éviter les troncatures d'images.
 
-### Gestion des Doublons
-- ✅ **Déduplication par Message-ID** : évite l'import de messages en double (fréquent avec les exports Gmail multi-labels)
-- ✅ **Compteur de doublons** : affiche le nombre de messages ignorés à la fin
+### Flexibilité et Volume
+- **Mode Batch (Multi-MBOX)** : accepte un répertoire contenant plusieurs fichiers `.mbox` (utile pour les exports Google Takeout volumineux splittés) et les importe à la suite dans le même fichier PST.
+- **Interface Graphique Moderne (GUI)** : interface Tkinter/Ttk complète et élégante pour configurer et lancer la migration en quelques clics sans passer par le terminal.
+- **Limitation optionnelle** : paramètre `--limit` pour tester la migration sur un nombre réduit de messages.
 
 ### Robustesse et Reprise
-- ✅ **Reprise sur interruption** : sauvegarde automatique de l'état tous les 100 messages
-- ✅ **Arrêt gracieux (Ctrl+C)** : sauvegarde immédiate de l'état avant fermeture
-- ✅ **Rapport des erreurs** : fichier `problem_messages.json` listant les messages problématiques
+- **Déduplication robuste par Message-ID** : filtre automatiquement les doublons. La liste des e-mails déjà migrés est sauvegardée dans l'état de reprise pour éviter les doublons même après une interruption.
+- **Reprise sur interruption** : sauvegarde automatique de l'état tous les 100 messages.
+- **Arrêt gracieux (Ctrl+C ou bouton Pause)** : sauvegarde immédiate de l'état avant fermeture.
+- **Rapport des erreurs** : fichier `problem_messages.json` listant les messages problématiques.
 
-### Qualité des Messages Importés
-- ✅ **Corrections du statut Brouillon** : les messages n'apparaissent plus comme brouillons dans Outlook
-- ✅ **Dates d'envoi préservées** : affichage correct des dates originales
-- ✅ **Mise à jour automatique des catégories Outlook** : coloration immédiate disponible
+---
 
 ## 🛠️ Prérequis
 
-1.  **Windows** avec **Microsoft Outlook** installé
-2.  Démarer Outlook sans comptes avec la commande
-    --> Alt+R "outlook.exe /PIM nom_de_profile" (crée le profile)
-    --> Alt+R "outlook.exe /profile nom_de_profile" (ouvre le profile)
-2.  **Python 3.x**
-3.  Bibliothèques Python :
-    ```bash
-    pip install pywin32 tqdm
-    ```
+1. **Windows** avec **Microsoft Outlook (Classic)** installé.
+2. Outlook doit être configuré avec un profil actif.
+   * *Astuce : Pour utiliser Outlook sans lui associer d'adresse e-mail (mode local seul), ouvrez l'invite de commande (Win+R) et lancez :*
+     ```text
+     outlook.exe /PIM "MonProfilHorsLigne"
+     ```
+3. **Python 3.x** installé.
+4. Bibliothèques Python requises :
+   ```bash
+   pip install pywin32 tqdm
+   ```
+
+---
 
 ## 📖 Utilisation
 
-### Commande de base
+### 1. Mode Interface Graphique (GUI) — Recommandé
+Double-cliquez sur le script `mbox_to_pst.py` ou lancez-le simplement dans votre terminal sans argument :
+```bash
+python mbox_to_pst.py
+```
+*L'interface graphique vous permettra de sélectionner vos fichiers, configurer vos options et suivre la progression en temps réel avec un journal de logs intégré.*
+
+### 2. Mode Ligne de commande (CLI)
+#### Commande de base (Fichier unique) :
 ```bash
 python mbox_to_pst.py "chemin/vers/fichier.mbox" "chemin/vers/sortie.pst"
 ```
 
-### Avec limitation de messages (pour tests)
+#### Traitement par lots (Batch dossier) :
+```bash
+python mbox_to_pst.py "chemin/vers/dossier_mboxes" "chemin/vers/sortie.pst"
+```
+
+#### Avec limitation de messages (pour tests) :
 ```bash
 python mbox_to_pst.py "fichier.mbox" "sortie.pst" --limit 100
 ```
 
-python mbox_to_pst.py "E:\Sauveguarde_Messages_GMAIL\Tous les messages, y compris ceux du dossier Spam -002.mbox" "E:\Sauveguarde_Messages_GMAIL\Takeout\Mail\archive_outlook.pst" --limit 20
-
-
-### Options disponibles
+### Options CLI disponibles
 
 | Option | Description |
 |--------|-------------|
 | `--folder "Nom"` | Nom du dossier racine dans le PST (défaut: "Gmail Archive") |
-| `--limit N` | Limite le traitement à N messages (utile pour les tests) |
+| `--limit N` | Limite le traitement à N messages par fichier |
 | `--no-resume` | Ignore l'état précédent et recommence depuis le début |
+| `--gui` | Force l'ouverture de l'interface graphique |
 
-## 🛑 Arrêter et Reprendre
-
-- **Arrêter proprement** : Appuyez sur `Ctrl+C` → l'état est sauvegardé immédiatement
-- **Reprendre** : Relancez la même commande → reprise automatique au dernier message traité
-- **Recommencer à zéro** : Supprimez `migration_state.json`
+---
 
 ## 📦 Fichiers générés
 
 | Fichier | Description |
 |---------|-------------|
-| `migration.log` | Journal détaillé des opérations |
-| `migration_state.json` | État pour la reprise après interruption |
-| `problem_messages.json` | Liste des messages avec erreurs (pièces jointes trop volumineuses, etc.) |
-
-## ⚠️ Notes importantes
-
-- **Outlook doit être installé** : le script utilise l'interface COM native
-- **Vitesse** : ~2-5 messages/seconde (les fichiers de 10 Go peuvent prendre plusieurs heures)
-- **Ne pas fermer Outlook** pendant l'exécution du script
-- **Doublons Gmail** : automatiquement filtrés grâce à la déduplication par Message-ID
+| `migration.log` | Journal détaillé des opérations de migration |
+| `migration_state.json` | État pour la reprise après interruption (contient l'index et les Message-IDs déjà vus) |
+| `problem_messages.json` | Liste des messages avec erreurs (pièces jointes corrompues, etc.) |
+| `categories_config.json` | Configuration exportée des couleurs de catégories (généré par le script d'export) |
 
 ---
 
-## 🏷️ Scripts de Gestion des Catégories Outlook (PowerShell)
+## 🏷️ Gestion et Portabilité des Catégories (PowerShell)
 
-Après migration du PST vers un autre PC, les catégories peuvent ne pas être reconnues par Outlook (affichage blanc/gris). Ces scripts permettent de synchroniser et gérer les catégories.
+Les catégories Outlook et leurs couleurs sont normalement liées au profil local de Windows. Ces scripts PowerShell (encodés en UTF-8 avec BOM) permettent de transférer vos catégories et couleurs de façon transparente.
 
-### `sync_categories.ps1` — Synchronisation et Réparation
+### `export_categories.ps1` — Exportation (PC Source)
+Exporte la liste globale des catégories de votre profil Outlook (Nom, Couleur indexée de 0 à 25, Raccourcis) dans un fichier `categories_config.json`.
 
-**Utilité :** Importer les catégories d'un PST vers la "Master Category List" d'Outlook et réparer les étiquettes fusionnées.
+### `sync_categories.ps1` — Synchronisation et Restauration (PC Cible)
+Scanne récursivement le fichier PST importé pour récupérer les catégories appliquées aux messages et les recréer dans le profil du nouveau PC. **Si le fichier `categories_config.json` est présent dans le même répertoire, il restaure automatiquement les couleurs et raccourcis d'origine.**
 
-**Fonctionnement :**
-1. Parcourt récursivement tous les messages du PST sélectionné.
-2. Découpe les étiquettes fusionnées (ex: `"A; B; C"` → trois catégories).
-3. Ajoute chaque catégorie à la Master List si elle n'existe pas.
-4. Ré-enregistre les catégories proprement sur chaque message.
-
-**Cas d'usage :**
-- Post-migration sur un nouveau PC
-- Réparation des couleurs de catégories
+### `manage_categories.ps1` — Nettoyage complet
+Permet de lister, supprimer sélectivement ou supprimer en masse les catégories de votre profil Outlook (du catalogue seul, ou du catalogue et de tous les messages pour une remise à zéro).
 
 ---
 
-### `manage_categories.ps1` — Gestion et Nettoyage
+## 📋 Procédure Recommandée de Bout en Bout
 
-**Utilité :** Lister, supprimer sélectivement ou en masse les catégories Outlook.
+### Étape 1 : Migration et configuration (PC Source - PC 1)
+1. Exécutez la migration (GUI ou CLI). Les étiquettes Gmail sont importées dans le fichier PST en tant que catégories Outlook.
+2. Ouvrez Outlook sur le PC 1 et attribuez les couleurs de votre choix à vos nouvelles catégories (Ruban Outlook > **Classer** > **Toutes les catégories**).
+3. Ouvrez PowerShell dans le dossier du projet et exécutez le script d'exportation :
+   ```powershell
+   PowerShell.exe -ExecutionPolicy Bypass -File .\export_categories.ps1
+   ```
+   *(Cela génère le fichier `categories_config.json`)*.
 
-**Options :**
-- **[N]** : Supprimer par numéro(s) (ex: `1,5,10,20`)
-- **[A]** : Supprimer TOUTES les catégories
-- **[Q]** : Quitter
+### Étape 2 : Transfert (PC 1 ➔ PC 2)
+Copiez sur votre support de transfert vers le PC cible :
+- Le fichier **`.pst`** migré.
+- Le fichier **`categories_config.json`**.
+- Les scripts **`sync_categories.ps1`** et **`manage_categories.ps1`**.
 
-**Modes de suppression :**
-- **[1]** : Catalogue Outlook uniquement
-- **[2]** : Catalogue + tous les messages (Nettoyage Complet)
-
-**Cas d'usage :**
-- Nettoyer les catégories fusionnées créées par erreur
-- Remise à zéro avant resynchronisation
-- Supprimer des catégories obsolètes (Spam, Forums, etc.)
-
----
-
-### 📋 Procédure Recommandée (PC de destination)
-
-```powershell
-# 1. Nettoyer (si nécessaire)
-PowerShell.exe -ExecutionPolicy Bypass -File .\manage_categories.ps1
-# → [A] pour tout sélectionner → [2] nettoyage complet → [0] tous les comptes
-
-# 2. Synchroniser
-PowerShell.exe -ExecutionPolicy Bypass -File .\sync_categories.ps1
-# → Sélectionner le PST → Laisser réparer
-
-# 3. Dans Outlook : Classer > Toutes les catégories > Attribuer les couleurs
-```
-
-> **Note :** Les scripts sont encodés en UTF-8 avec BOM pour gérer les caractères accentués.
+### Étape 3 : Importation et Synchronisation (PC Cible - PC 2)
+1. Dans Outlook sur le PC 2, ouvrez le PST : **Fichier** > **Ouvrir et exporter** > **Ouvrir le fichier de données Outlook**. *(Les étiquettes de catégories apparaissent en gris/blanc)*.
+2. *(Optionnel)* Si d'anciens essais ont créé des catégories fantômes, lancez `manage_categories.ps1` avec l'option **`[A]`** (Tout supprimer) puis le mode **`[2]`** (Nettoyage complet) pour nettoyer le profil.
+3. Lancez la restauration des couleurs et catégories en exécutant :
+   ```powershell
+   PowerShell.exe -ExecutionPolicy Bypass -File .\sync_categories.ps1
+   ```
+   *(Sélectionnez le numéro de votre PST importé. Les catégories seront créées dans Outlook avec leurs couleurs d'origine et ré-appliquées proprement).*

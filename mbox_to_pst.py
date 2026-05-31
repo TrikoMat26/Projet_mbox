@@ -3,7 +3,6 @@ import pywintypes  # Explicit import for PyInstaller
 import win32timezone  # Required by pywintypes.Time()
 import os
 import mailbox  # Standard MBOX parser - more reliable than custom streaming
-
 import sys
 import time
 import tempfile
@@ -11,12 +10,32 @@ import logging
 import json
 import signal
 from email.header import decode_header
-from email.utils import parsedate_to_datetime, getaddresses, formataddr, parseaddr
+from email.utils import parsedate_to_datetime, getaddresses, formataddr
 from email import message_from_bytes
 import datetime
 import mimetypes
 import re
 
+# Optional libraries for GUI and CLI progress
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+    GUI_AVAILABLE = True
+except ImportError:
+    GUI_AVAILABLE = False
+
+try:
+    import threading
+    THREADING_AVAILABLE = True
+except ImportError:
+    THREADING_AVAILABLE = False
+
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
+    tqdm = None
 
 # Global state for graceful shutdown
 _shutdown_requested = False
@@ -31,143 +50,7 @@ def signal_handler(signum, frame):
 # Register signal handler (Windows compatible)
 signal.signal(signal.SIGINT, signal_handler)
 
-def stream_mbox(mbox_path, start_at=0, progress_callback=None):
-    """
-    Streaming MBOX parser that yields (message_index, file_position, message) tuples.
-    
-    This reads the file in chunks and parses messages on-the-fly, allowing
-    real-time progress updates based on file position.
-    
-    Args:
-        mbox_path: Path to the MBOX file
-        start_at: Message index to start from (for resume support)
-        progress_callback: Optional callable(file_position, file_size) for progress updates
-    
-    Yields:
-        (message_index, file_position, email.message.Message)
-    """
-    file_size = os.path.getsize(mbox_path)
-    # MBOX message boundary pattern
-    # Google Takeout uses: "From 1234567890@xxx Mon Jan 21 00:00:00 +0000 2026"
-    # We match "From " followed by non-space chars, then a space (simple but effective)
-    mbox_from_pattern = re.compile(rb'^From \S+ .+\r?\n', re.MULTILINE)
-    
-    with open(mbox_path, 'rb') as f:
-        message_index = 0
-        current_message_data = b''
-        last_progress_pos = 0
-        
-        # Read in chunks for efficiency
-        chunk_size = 1024 * 1024  # 1 MB chunks
-        buffer = b''
-        
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk and not buffer:
-                break
-            
-            buffer += chunk
-            
-            # Find all "From " lines (message boundaries)
-            # MBOX format: each message starts with "From <email> <date>"
-            matches = list(mbox_from_pattern.finditer(buffer))
-            
-            if len(matches) == 0:
-                # No complete message boundary found yet, keep reading
-                if not chunk:  # End of file
-                    # Process remaining data as last message
-                    if buffer.strip():
-                        if message_index >= start_at:
-                            try:
-                                msg = message_from_bytes(buffer)
-                                yield (message_index, f.tell(), msg)
-                            except Exception:
-                                pass
-                    break
-                continue
-            
-            # Process all complete messages (except the last one in buffer)
-            for i, match in enumerate(matches):
-                if i == 0:
-                    # First match - data before it belongs to previous message
-                    if current_message_data:
-                        if message_index >= start_at:
-                            try:
-                                msg = message_from_bytes(current_message_data)
-                                pos = f.tell() - len(buffer) + match.start()
-                                yield (message_index, pos, msg)
-                            except Exception:
-                                pass
-                        message_index += 1
-                        
-                        # Progress callback during skip phase
-                        if progress_callback and message_index < start_at:
-                            pos = f.tell() - len(buffer) + match.start()
-                            if pos - last_progress_pos > 10 * 1024 * 1024:  # Every 10MB
-                                progress_callback(pos, file_size, message_index, start_at)
-                                last_progress_pos = pos
-                    
-                    # Start new message (skip the "From " line itself)
-                    if i + 1 < len(matches):
-                        current_message_data = buffer[match.end():matches[i + 1].start()]
-                    else:
-                        current_message_data = buffer[match.end():]
-                else:
-                    # Complete message between this match and previous
-                    if message_index >= start_at:
-                        try:
-                            msg = message_from_bytes(current_message_data)
-                            pos = f.tell() - len(buffer) + match.start()
-                            yield (message_index, pos, msg)
-                        except Exception:
-                            pass
-                    message_index += 1
-                    
-                    # Progress callback during skip phase
-                    if progress_callback and message_index < start_at:
-                        pos = f.tell() - len(buffer) + match.start()
-                        if pos - last_progress_pos > 10 * 1024 * 1024:
-                            progress_callback(pos, file_size, message_index, start_at)
-                            last_progress_pos = pos
-                    
-                    # Start new message
-                    if i + 1 < len(matches):
-                        current_message_data = buffer[match.end():matches[i + 1].start()]
-                    else:
-                        current_message_data = buffer[match.end():]
-            
-            # Keep only the last incomplete message in buffer
-            if matches:
-                buffer = buffer[matches[-1].start():]
-            
-            if not chunk:  # End of file
-                # Process final message
-                if buffer.strip():
-                    # Remove the "From " line from the start
-                    match = mbox_from_pattern.match(buffer)
-                    if match:
-                        final_data = buffer[match.end():]
-                    else:
-                        final_data = buffer
-                    
-                    if final_data.strip() and message_index >= start_at:
-                        try:
-                            msg = message_from_bytes(final_data)
-                            yield (message_index, file_size, msg)
-                        except Exception:
-                            pass
-                break
-
-
-# Optional: tqdm for progress bar (graceful fallback if not installed)
-try:
-    from tqdm import tqdm
-    TQDM_AVAILABLE = True
-except ImportError:
-    TQDM_AVAILABLE = False
-    tqdm = None
-
-# Configure logging
+# Configure logging to console and file
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -193,7 +76,6 @@ def log_problem_message(msg_index, subject, sender, date_str, error_type, error_
     decoded_sender = sender
     if sender:
         try:
-            from email.header import decode_header
             parts = decode_header(sender)
             decoded_parts = []
             for data, charset in parts:
@@ -226,11 +108,9 @@ def decode_mime_header(header_value):
         result = []
         for part, encoding in decoded_parts:
             if isinstance(part, bytes):
-                # Try UTF-8 first with strict errors to trigger fallback if invalid
                 try:
                     result.append(part.decode(encoding or 'utf-8', errors='strict'))
                 except:
-                    # Fallback to latin-1 or windows-1252 if UTF-8 fails
                     try:
                         result.append(part.decode('latin-1', errors='replace'))
                     except:
@@ -257,11 +137,6 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email="", re
     try:
         prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E070003", 1)
     except: pass
-    
-    # PR_MESSAGE_STATUS - skip this as it often fails
-    # try:
-    #     prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x0E170003", 0)
-    # except: pass
     
     # PR_ICON_INDEX (0x10800003) -> 256 (Standard Unopened Mail Icon)
     try:
@@ -299,58 +174,55 @@ def set_item_properties(mail_item, date_obj, sender_name="", sender_email="", re
     # 4. Set Threading Headers for Conversation Grouping
     if references:
         try:
-            # PR_INTERNET_REFERENCES (0x1039001F)
             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x1039001F", references)
         except: pass
     
     if in_reply_to:
         try:
-            # PR_IN_REPLY_TO_ID (0x1042001F)
             clean_reply_to = in_reply_to.strip().strip('<>')
             prop_accessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x1042001F", clean_reply_to)
         except: pass
 
-
-
-def save_state(count):
-    with open(STATE_FILE, "w") as f:
-        json.dump({"last_count": count}, f)
+def save_state(count, processed_files=None, current_file=None, seen_ids=None):
+    """Save the progress state including batch processed files and seen message IDs."""
+    state = {
+        "last_count": count,
+        "processed_files": processed_files or [],
+        "current_file": current_file,
+        "seen_message_ids": list(seen_ids) if seen_ids else []
+    }
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning(f"Could not save migration state: {e}")
 
 def load_state():
+    """Load the progress state."""
     if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            return json.load(f).get("last_count", 0)
-    return 0
-
-def add_to_master_categories(namespace, category_names):
-    """Adds categories to the Outlook Master Category List if they don't exist."""
-    try:
-        master_list = namespace.Categories
-        existing = {cat.Name for cat in master_list}
-        for name in category_names:
-            if name and name not in existing:
-                try:
-                    # olCategoryColorNone = 0, or just let Outlook pick
-                    master_list.Add(name)
-                    existing.add(name)
-                except: pass
-    except Exception as e:
-        logging.warning(f"Could not update Master Category List: {e}")
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                if isinstance(state, dict):
+                    last_count = state.get("last_count", 0)
+                    processed_files = state.get("processed_files", [])
+                    current_file = state.get("current_file", None)
+                    seen_ids = set(state.get("seen_message_ids", []))
+                    return last_count, processed_files, current_file, seen_ids
+        except Exception as e:
+            logging.warning(f"Error reading state file ({e}). Starting fresh.")
+    return 0, [], None, set()
 
 def normalize_addresses(header_value):
     if not header_value:
         return ""
     
-    # Use getaddresses on the raw header converted to string.
-    # We do NOT pre-decode the whole header because that can break address delimiters (commas).
     raw_values = [str(header_value)]
-    
     seen = set()
     addresses = []
     
     for name, email in getaddresses(raw_values):
         if not email:
-            # Sometimes getaddresses puts the whole encoded mess in 'name' if no angle brackets
             if "@" in name:
                  email = name
                  name = ""
@@ -360,23 +232,17 @@ def normalize_addresses(header_value):
         email_clean = email.strip()
         email_lower = email_clean.lower()
         
-        # Deduplication
         if email_lower in seen:
             continue
         seen.add(email_lower)
         
-        # Decode the name properly
         decoded_name = ""
         if name:
-            # Helper to strip surrounding quotes if they wrap an encoded word
-            # e.g. "=?utf-8?..." -> =?utf-8?...
             candidate = name.strip()
             if candidate.startswith('"') and candidate.endswith('"') and "=?" in candidate:
                 candidate = candidate[1:-1]
             
             decoded_name = decode_mime_header(candidate).strip()
-            
-            # Double-check: sometimes one pass isn't enough or it was double-encoded
             if "=?" in decoded_name:
                  decoded_name = decode_mime_header(decoded_name).strip()
 
@@ -387,9 +253,6 @@ def normalize_addresses(header_value):
 def parse_sender(header_value):
     if not header_value:
         return "", ""
-    
-    # Use getaddresses which is more robust for headers than parseaddr
-    # It handles comma-separated lists (we take the first one)
     pairs = getaddresses([str(header_value)])
     if pairs:
         name, email = pairs[0]
@@ -402,24 +265,46 @@ def format_sender_display(sender_name, sender_email):
         return formataddr((sender_name, sender_email))
     return sender_name
 
-def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, limit=None):
-    if not os.path.exists(mbox_path):
-        logging.error(f"MBOX file not found at {mbox_path}")
-        return
+def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, limit=None, progress_callback=None):
+    """
+    Main function to process MBOX file(s) and migrate them into an Outlook PST file.
+    Supports directories, seen message-ID tracking across resumes, and early binding COM acceleration.
+    """
+    global _shutdown_requested
+    
+    # 1. Expand list of MBOX files (Batch Mode)
+    mbox_files = []
+    if os.path.isdir(mbox_path):
+        for file in sorted(os.listdir(mbox_path)):
+            if file.lower().endswith('.mbox'):
+                mbox_files.append(os.path.join(mbox_path, file))
+        if not mbox_files:
+            logging.error(f"No .mbox files found in directory: {mbox_path}")
+            return
+        logging.info(f"Batch mode: Found {len(mbox_files)} MBOX files in directory.")
+    else:
+        if not os.path.exists(mbox_path):
+            logging.error(f"MBOX file not found at {mbox_path}")
+            return
+        mbox_files = [mbox_path]
 
     pst_abs_path = os.path.abspath(pst_path)
     
-    # Initialize Outlook
+    # 2. Connect to Outlook (Early Binding COM Optimization)
     try:
-        outlook = win32com.client.Dispatch("Outlook.Application")
+        try:
+            logging.info("Connecting to Outlook (Early Binding)...")
+            outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
+        except Exception as eb_err:
+            logging.warning(f"Early binding failed: {eb_err}. Falling back to standard late binding.")
+            outlook = win32com.client.Dispatch("Outlook.Application")
         namespace = outlook.GetNamespace("MAPI")
     except Exception as e:
         logging.error(f"Error connecting to Outlook: {e}. Ensure Outlook is installed.")
         return
 
-    # Create/Open PST
+    # 3. Create/Open PST
     logging.info(f"Opening/Creating PST: {pst_abs_path}")
-
     try:
         pst_store = None
         for store in namespace.Stores:
@@ -443,12 +328,11 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
             return
             
         root_folder = pst_store.GetRootFolder()
-
     except Exception as e:
         logging.error(f"Error accessing PST: {e}")
         return
 
-    # Get target folder
+    # 4. Get target folder
     try:
         target_folder = None
         for folder in root_folder.Folders:
@@ -461,15 +345,21 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
         logging.error(f"Error creating/accessing folder '{folder_name}': {e}")
         return
 
-    # For clearing the 'Draft' status, we will create items in a temporary storage (like default Inbox)
-    # and then move them to the target PST folder. This is a common FIX for the Unsent flag.
-    # We'll use the default folder for temporary creation.
+    # 5. Create a transit folder inside the PST to fix Draft status via Move
     try:
-        temp_folder = namespace.GetDefaultFolder(6) # 6 = olFolderInbox
-    except:
-        temp_folder = target_folder # Fallback
+        temp_folder_name = "_Temp_Migration_"
+        temp_folder = None
+        for folder in root_folder.Folders:
+            if folder.Name == temp_folder_name:
+                temp_folder = folder
+                break
+        if not temp_folder:
+            temp_folder = root_folder.Folders.Add(temp_folder_name)
+    except Exception as e:
+        logging.warning(f"Could not create temp transit folder inside PST, using target folder: {e}")
+        temp_folder = target_folder
 
-    # Master Category List Caching
+    # 6. Cache/Add Outlook Categories
     known_master_categories = set()
     try:
         for cat in namespace.Categories:
@@ -484,374 +374,639 @@ def mbox_to_pst(mbox_path, pst_path, folder_name="Gmail Archive", resume=True, l
                     known_master_categories.add(c)
                 except: pass
 
-    # Create a transit folder WITHIN the PST to avoid cross-store resource issues
-    # and still fix the 'Draft' status via the Move() method.
-    try:
-        temp_folder_name = "_Temp_Migration_"
-        temp_folder = None
-        for folder in root_folder.Folders:
-            if folder.Name == temp_folder_name:
-                temp_folder = folder
-                break
-        if not temp_folder:
-            temp_folder = root_folder.Folders.Add(temp_folder_name)
-    except Exception as e:
-        logging.warning(f"Could not create temp folder in PST, using target: {e}")
-        temp_folder = target_folder
-
-    # Initialize state variables
+    # 7. Initialize State and Resumption Points
     attachments_temp_dir = tempfile.TemporaryDirectory()
     
-    start_at = 0
-    if resume:
-        start_at = load_state()
-        if start_at > 0:
-            logging.info(f"Resuming from message {start_at}...")
+    if not resume:
+        # Clear state file if resume is False
+        if os.path.exists(STATE_FILE):
+            try:
+                os.remove(STATE_FILE)
+            except: pass
+        start_at, processed_files, current_file, seen_message_ids = 0, [], None, set()
+    else:
+        start_at, processed_files, current_file, seen_message_ids = load_state()
+        if start_at > 0 or processed_files:
+            logging.info(f"Resuming progress: {len(processed_files)} MBOX files processed, current file: '{current_file}' at index {start_at}.")
 
-    count = 0
-    errors = 0
-    duplicates_skipped = 0
+    total_duplicates = 0
+    total_errors = 0
+    total_processed = 0
     start_time = time.time()
     
-    # Effective limit calculation
-    effective_limit = (start_at + limit) if limit else None
+    skip_files = False
+    if resume and current_file:
+        current_file_abs = os.path.abspath(current_file)
+        if current_file_abs in [os.path.abspath(f) for f in mbox_files]:
+            skip_files = True
 
-    # Deduplication: track Message-IDs to avoid importing duplicates
-    seen_message_ids = set()
-
-    # Setup progress bar
-    file_size = os.path.getsize(mbox_path)
-    file_size_mb = file_size / (1024 * 1024)
-    
-    progress_bar = None
-    last_progress_mb = 0
-    progress_bar_created = False
-    
-    # Show info about skipping if resuming
-    if start_at > 0:
-        logging.info(f"Seeking to message {start_at}...")
-    
-    # Use standard mailbox library for reliable MBOX parsing
-    # (Custom streaming parser had bugs that truncated some messages)
-    messages_processed = 0
-    logging.info("Opening MBOX file with standard parser...")
-    mbox = mailbox.mbox(mbox_path)
-    total_messages = len(mbox) if hasattr(mbox, '__len__') else None
-    
-    if total_messages:
-        logging.info(f"Found {total_messages} messages in MBOX")
-    
-    for i, message in enumerate(mbox):
-        # Skip to resume point
-        if i < start_at:
+    # 8. Main loop over each MBOX file
+    for file_idx, mbox_file in enumerate(mbox_files):
+        mbox_file_abs = os.path.abspath(mbox_file)
+        
+        # Skip fully processed files
+        if mbox_file_abs in processed_files:
+            logging.info(f"Skipping already processed MBOX: {os.path.basename(mbox_file)}")
             continue
-        
-        # Create progress bar only when processing actually starts
-        if TQDM_AVAILABLE and not progress_bar_created:
-            if limit:
-                progress_bar = tqdm(total=limit, desc="Processing", unit="msg",
-                                   file=sys.stderr, dynamic_ncols=True, leave=False,
-                                   bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
-            elif total_messages:
-                progress_bar = tqdm(total=total_messages - start_at, desc="Processing", unit="msg",
-                                   file=sys.stderr, dynamic_ncols=True, leave=False,
-                                   bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} msgs [{elapsed}<{remaining}]')
-            else:
-                progress_bar = tqdm(total=int(file_size_mb), desc="Processing", unit="MB",
-                                   file=sys.stderr, dynamic_ncols=True, leave=False,
-                                   bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}MB [{elapsed}<{remaining}]')
-            progress_bar_created = True
-        
             
-
-        if effective_limit and i >= effective_limit:
-            logging.info(f"Session limit of {limit} messages reached.")
-            break
+        # Fast-forward to resume file
+        if skip_files:
+            if mbox_file_abs == os.path.abspath(current_file):
+                skip_files = False
+                file_start_at = start_at
+            else:
+                logging.info(f"Skipping {os.path.basename(mbox_file)} (already migrated)")
+                continue
+        else:
+            file_start_at = 0
+            
+        logging.info(f"Processing MBOX file [{file_idx+1}/{len(mbox_files)}]: {os.path.basename(mbox_file)}")
+        current_file = mbox_file_abs
+        save_state(file_start_at, processed_files, current_file, seen_message_ids)
         
-        # Check for graceful shutdown request (Ctrl+C)
-        if _shutdown_requested:
-            logging.info(f"Shutdown requested. Saving state at message {count}...")
-            save_state(count)
-            break
-
-        mail = None
         try:
-            # Check for duplicates based on Message-ID
-            message_id = message.get('Message-ID', '') or message.get('Message-Id', '')
-            if message_id:
-                message_id = message_id.strip()
-                if message_id in seen_message_ids:
-                    duplicates_skipped += 1
-                    count = i + 1  # Update count for state saving
-                    continue  # Skip this duplicate
-                seen_message_ids.add(message_id)
-            
-            # Extract headers
-            subject = decode_mime_header(message['subject']) or "(No Subject)"
-            sender_header = message['from'] or ""
-            to_header = message['to'] or ""
-            sender_name, sender_email = parse_sender(sender_header)
-            to = normalize_addresses(to_header)
-
-            
-            # Date parsing
-            date_val = None
-            if message['date']:
-                try:
-                    date_val = parsedate_to_datetime(message['date'])
-                except:
-                    pass
-
-            # Threading headers for conversation grouping
-            references = message.get('References', '') or ''
-            in_reply_to = message.get('In-Reply-To', '') or ''
-
-            # X-Gmail-Labels
-            labels_headers = message.get_all('X-Gmail-Labels', [])
-            categories = []
-            
-            for distinct_header in labels_headers:
-                if distinct_header:
-                    decoded = decode_mime_header(distinct_header)
-                    parts = [l.strip() for l in decoded.split(',') if l.strip()]
-                    categories.extend(parts)
-            
-            categories = list(set(categories))
-            
-            if categories:
-                ensure_categories_exist(categories)
-
-            # Création du message dans le dossier de transit
-            mail = temp_folder.Items.Add(0) # 0 = olMailItem
-            
-            # Application des propriétés de base
-            mail.Subject = subject
-            mail.SentOnBehalfOfName = format_sender_display(sender_name, sender_email)
-            mail.To = to
-
-            if categories:
-                mail.Categories = "; ".join(categories)
-
-            # Corps et Pièces jointes
-            body_html = ""
-            body_text = ""
-            if message.is_multipart():
-                for part in message.walk():
-                    if part.get_content_maintype() == 'multipart':
-                        continue
-
-                    content_type = part.get_content_type()
-                    content_disposition = str(part.get("Content-Disposition", ""))
-                    filename = part.get_filename()
-                    content_id = part.get('Content-ID')
-                    
-                    is_attachment = False
-                    
-                    if "attachment" in content_disposition:
-                        is_attachment = True
-                    elif filename:
-                        is_attachment = True
-                    elif content_type not in ("text/plain", "text/html"):
-                        is_attachment = True
-                    
-                    # Handle Body
-                    if not is_attachment and content_type in ("text/plain", "text/html"):
-                        try:
-                            payload = part.get_payload(decode=True)
-                            charset = part.get_content_charset() or 'utf-8'
-                            decoded = payload.decode(charset, errors='replace')
-                            if content_type == "text/html":
-                                body_html += decoded
-                            else:
-                                body_text += decoded
-                        except: pass
-                    
-                    # Handle Attachment/Inline
-                    else:
-                        if filename:
-                            filename = decode_mime_header(filename)
-                        else:
-                            ext = mimetypes.guess_extension(content_type) or ".dat"
-                            filename = f"attachment_{os.urandom(4).hex()}{ext}"
-                        
-                        # Sanitize filename for filesystem
-                        filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
-                            
-                        try:
-                            # Robust payload extraction with fallback
-                            payload = part.get_payload(decode=True)
-                            
-                            if payload is None:
-                                # Fallback: manual decoding for non-standard encodings
-                                raw_payload = part.get_payload(decode=False)
-                                transfer_encoding = (part.get('Content-Transfer-Encoding') or '').lower().strip()
-                                
-                                if raw_payload:
-                                    if transfer_encoding == 'base64':
-                                        import base64
-                                        try:
-                                            # Handle string or bytes
-                                            if isinstance(raw_payload, str):
-                                                raw_payload = raw_payload.encode('ascii', errors='ignore')
-                                            payload = base64.b64decode(raw_payload)
-                                        except Exception as b64_err:
-                                            logging.debug(f"Base64 decode failed for {filename}: {b64_err}")
-                                    elif transfer_encoding == 'quoted-printable':
-                                        import quopri
-                                        try:
-                                            if isinstance(raw_payload, str):
-                                                raw_payload = raw_payload.encode('ascii', errors='ignore')
-                                            payload = quopri.decodestring(raw_payload)
-                                        except Exception as qp_err:
-                                            logging.debug(f"Quoted-printable decode failed for {filename}: {qp_err}")
-                                    elif transfer_encoding in ('7bit', '8bit', 'binary', ''):
-                                        # No encoding, use as-is
-                                        if isinstance(raw_payload, str):
-                                            payload = raw_payload.encode('utf-8', errors='replace')
-                                        else:
-                                            payload = raw_payload
-                            
-                            if payload:
-                                # Use unique temp filename to avoid conflicts with multiple attachments
-                                import uuid
-                                base_name, ext = os.path.splitext(filename)
-                                unique_filename = f"{base_name}_{uuid.uuid4().hex[:8]}{ext}"
-                                temp_path = os.path.join(attachments_temp_dir.name, unique_filename)
-                                
-                                # Write with explicit flush and close
-                                with open(temp_path, "wb") as f:
-                                    f.write(payload)
-                                    f.flush()
-                                    os.fsync(f.fileno())
-                                
-                                # Verify file integrity
-                                written_size = os.path.getsize(temp_path)
-                                expected_size = len(payload)
-                                if written_size != expected_size:
-                                    logging.warning(f"Size mismatch for {filename}: expected {expected_size}, got {written_size}")
-                                
-                                if written_size == 0:
-                                    logging.warning(f"Empty attachment written: {filename}")
-                                    os.remove(temp_path)
-                                else:
-                                    attachment = mail.Attachments.Add(temp_path, 1, 1, filename)
-                                    
-                                    if content_id:
-                                        cid_clean = content_id.strip('<>')
-                                        try:
-                                            attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
-                                        except: pass
-                                    
-                                    try:
-                                        os.remove(temp_path)
-                                    except OSError:
-                                        pass
-                            else:
-                                logging.warning(f"No payload extracted for attachment: {filename}")
-                                transfer_enc = part.get('Content-Transfer-Encoding', 'none')
-                                logging.debug(f"  Content-Type: {content_type}, Transfer-Encoding: {transfer_enc}")
-                                    
-                        except Exception as att_err:
-                            logging.warning(f"Attachment error [{filename}]: {att_err}")
-                            transfer_enc = part.get('Content-Transfer-Encoding', 'none')
-                            logging.debug(f"  Content-Type: {content_type}, Transfer-Encoding: {transfer_enc}")
-                            # Log for manual review
-                            date_str = str(message['date']) if message['date'] else ""
-                            log_problem_message(i, subject, sender_header, date_str, 
-                                              "attachment_error", f"{filename}: {att_err}")
-
-            else:
-                try:
-                    payload = message.get_payload(decode=True)
-                    charset = message.get_content_charset() or 'utf-8'
-                    content = payload.decode(charset, errors='replace')
-                    if message.get_content_type() == "text/html":
-                        body_html = content
-                    else:
-                        body_text = content
-                except: pass
-
-            if body_html:
-                mail.HTMLBody = body_html
-            elif body_text:
-                mail.Body = body_text
-            
-            mail.MessageClass = "IPM.Note"
-            try:
-                mail.UnRead = False
-            except Exception:
-                pass
-            
-            # Set MAPI Properties BEFORE Save (including threading headers)
-            set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email,
-                                references=references, in_reply_to=in_reply_to)
-            
-            # Save & Move
-            mail.Save()
-            if temp_folder != target_folder:
-                mail.Move(target_folder)
-            
-            count = i + 1
-            messages_processed += 1
-            
-            # Update progress bar (message count for limit mode)
-            if progress_bar and limit:
-                progress_bar.update(1)
-            elif count % 100 == 0 and not progress_bar:
-                # Fallback text logging if no tqdm
-
-                elapsed = time.time() - start_time
-                rate = (count - start_at) / elapsed if elapsed > 0 else 0
-                logging.info(f"Processed {count} messages... ({rate:.2f} msgs/sec)")
-
-            
-            # Save state periodically
-            if count % 100 == 0:
-                save_state(count)
-            
-            # Micro-pause every 10 messages to avoid resource exhaustion
-            if count % 10 == 0:
-                time.sleep(0.1)
-                
+            mbox = mailbox.mbox(mbox_file)
+            total_messages = len(mbox)
         except Exception as e:
-            errors += 1
-            logging.error(f"Error processing message {i}: {e}")
-            if errors > 500: # Higher threshold for 10GB
-                logging.error("Too many errors, stopping.")
-                break
+            logging.error(f"Could not open MBOX file {os.path.basename(mbox_file)}: {e}")
+            total_errors += 1
+            processed_files.append(mbox_file_abs)
             continue
-        finally:
-            # Explicitly release the COM object
-            mail = None
+            
+        logging.info(f"Found {total_messages} messages. Starting migration from message index {file_start_at}...")
+        
+        count = file_start_at
+        progress_bar = None
+        progress_bar_created = False
+        
+        for i, message in enumerate(mbox):
+            if i < file_start_at:
+                continue
+                
+            # If user set a limit, check if we reached it
+            if limit and (count - file_start_at) >= limit:
+                logging.info(f"Limit of {limit} messages reached for this session.")
+                break
+            
+            if _shutdown_requested:
+                logging.info(f"Graceful shutdown triggered. Saving state at message {count}...")
+                save_state(count, processed_files, current_file, seen_message_ids)
+                break
 
-    # Cleanup temp folder if empty
+            # CLI Progress Bar
+            if TQDM_AVAILABLE and not progress_bar_created and not progress_callback:
+                desc_text = f"MBOX {file_idx+1}/{len(mbox_files)}"
+                p_total = limit if limit else (total_messages - file_start_at)
+                progress_bar = tqdm(total=p_total, desc=desc_text, unit="msg", file=sys.stderr, dynamic_ncols=True, leave=False)
+                progress_bar_created = True
+
+            mail = None
+            try:
+                # Deduplication by Message-ID (Persisted in state)
+                message_id = message.get('Message-ID', '') or message.get('Message-Id', '')
+                if message_id:
+                    message_id = message_id.strip()
+                    if message_id in seen_message_ids:
+                        total_duplicates += 1
+                        count = i + 1
+                        if progress_bar:
+                            progress_bar.update(1)
+                        continue
+                    seen_message_ids.add(message_id)
+                
+                # Extract headers
+                subject = decode_mime_header(message['subject']) or "(No Subject)"
+                sender_header = message['from'] or ""
+                to_header = message['to'] or ""
+                sender_name, sender_email = parse_sender(sender_header)
+                to = normalize_addresses(to_header)
+
+                # Date parsing
+                date_val = None
+                if message['date']:
+                    try:
+                        date_val = parsedate_to_datetime(message['date'])
+                    except:
+                        pass
+
+                # Conversation Threading headers
+                references = message.get('References', '') or ''
+                in_reply_to = message.get('In-Reply-To', '') or ''
+
+                # X-Gmail-Labels
+                labels_headers = message.get_all('X-Gmail-Labels', [])
+                categories = []
+                for distinct_header in labels_headers:
+                    if distinct_header:
+                        decoded = decode_mime_header(distinct_header)
+                        parts = [l.strip() for l in decoded.split(',') if l.strip()]
+                        categories.extend(parts)
+                
+                categories = list(set(categories))
+                if categories:
+                    ensure_categories_exist(categories)
+
+                # Create draft message in temp folder
+                mail = temp_folder.Items.Add(0) # 0 = olMailItem
+                
+                mail.Subject = subject
+                mail.SentOnBehalfOfName = format_sender_display(sender_name, sender_email)
+                mail.To = to
+
+                if categories:
+                    mail.Categories = "; ".join(categories)
+
+                body_html = ""
+                body_text = ""
+                
+                # Parse bodies and attachments
+                if message.is_multipart():
+                    for part in message.walk():
+                        if part.get_content_maintype() == 'multipart':
+                            continue
+
+                        content_type = part.get_content_type()
+                        content_disposition = str(part.get("Content-Disposition", ""))
+                        filename = part.get_filename()
+                        content_id = part.get('Content-ID')
+                        
+                        is_attachment = False
+                        if "attachment" in content_disposition:
+                            is_attachment = True
+                        elif filename:
+                            is_attachment = True
+                        elif content_type not in ("text/plain", "text/html"):
+                            is_attachment = True
+                        
+                        # Handle Body text
+                        if not is_attachment and content_type in ("text/plain", "text/html"):
+                            try:
+                                payload = part.get_payload(decode=True)
+                                charset = part.get_content_charset() or 'utf-8'
+                                decoded = payload.decode(charset, errors='replace')
+                                if content_type == "text/html":
+                                    body_html += decoded
+                                else:
+                                    body_text += decoded
+                            except: pass
+                        
+                        # Handle Attachment or Inline image
+                        else:
+                            if filename:
+                                filename = decode_mime_header(filename)
+                            else:
+                                ext = mimetypes.guess_extension(content_type) or ".dat"
+                                filename = f"attachment_{os.urandom(4).hex()}{ext}"
+                            
+                            filename = re.sub(r'[<>:"/\\|?*]', '_', filename)
+                                
+                            try:
+                                payload = part.get_payload(decode=True)
+                                if payload is None:
+                                    # Fallback payload parsing
+                                    raw_payload = part.get_payload(decode=False)
+                                    transfer_encoding = (part.get('Content-Transfer-Encoding') or '').lower().strip()
+                                    
+                                    if raw_payload:
+                                        if transfer_encoding == 'base64':
+                                            import base64
+                                            try:
+                                                if isinstance(raw_payload, str):
+                                                    raw_payload = raw_payload.encode('ascii', errors='ignore')
+                                                payload = base64.b64decode(raw_payload)
+                                            except Exception as b64_err:
+                                                logging.debug(f"Base64 decode failed for {filename}: {b64_err}")
+                                        elif transfer_encoding == 'quoted-printable':
+                                            import quopri
+                                            try:
+                                                if isinstance(raw_payload, str):
+                                                    raw_payload = raw_payload.encode('ascii', errors='ignore')
+                                                payload = quopri.decodestring(raw_payload)
+                                            except Exception as qp_err:
+                                                logging.debug(f"Quoted QP decode failed for {filename}: {qp_err}")
+                                        elif transfer_encoding in ('7bit', '8bit', 'binary', ''):
+                                            if isinstance(raw_payload, str):
+                                                payload = raw_payload.encode('utf-8', errors='replace')
+                                            else:
+                                                payload = raw_payload
+                                
+                                if payload:
+                                    import uuid
+                                    base_name, ext = os.path.splitext(filename)
+                                    unique_filename = f"{base_name}_{uuid.uuid4().hex[:8]}{ext}"
+                                    temp_path = os.path.join(attachments_temp_dir.name, unique_filename)
+                                    
+                                    with open(temp_path, "wb") as f_attach:
+                                        f_attach.write(payload)
+                                        f_attach.flush()
+                                        os.fsync(f_attach.fileno())
+                                    
+                                    written_size = os.path.getsize(temp_path)
+                                    if written_size > 0:
+                                        # Position 0 for inline CIDs, Position 1 for attachments
+                                        position = 0 if content_id else 1
+                                        attachment = mail.Attachments.Add(temp_path, 1, position, filename)
+                                        
+                                        # Set Full MAPI inline properties if Content-ID exists
+                                        if content_id:
+                                            cid_clean = content_id.strip('<>')
+                                            try:
+                                                # 1. PR_ATTACH_CONTENT_ID (0x3712001F)
+                                                attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x3712001F", cid_clean)
+                                                # 2. PR_ATTACH_FLAGS (0x37140003) -> 4 (ATT_MHTML_REF)
+                                                attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x37140003", 4)
+                                                # 3. PR_ATTACH_MIME_TAG (0x370E001F)
+                                                attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x370E001F", content_type or "image/jpeg")
+                                                # 4. PR_ATTACHMENT_HIDDEN (0x7FFE000B) -> True (hides it from standard attachment panel)
+                                                attachment.PropertyAccessor.SetProperty("http://schemas.microsoft.com/mapi/proptag/0x7FFE000B", True)
+                                            except Exception as prop_err:
+                                                logging.debug(f"Failed setting inline attachment properties for {filename}: {prop_err}")
+                                        
+                                        try:
+                                            os.remove(temp_path)
+                                        except OSError:
+                                            pass
+                                    else:
+                                        logging.warning(f"Empty attachment skipped: {filename}")
+                                else:
+                                    logging.warning(f"No payload extracted for attachment: {filename}")
+                            except Exception as att_err:
+                                logging.warning(f"Attachment error [{filename}]: {att_err}")
+                                date_str = str(message['date']) if message['date'] else ""
+                                log_problem_message(i, subject, sender_header, date_str, 
+                                                  "attachment_error", f"{filename}: {att_err}")
+                else:
+                    # Simple singlepart message
+                    try:
+                        payload = message.get_payload(decode=True)
+                        charset = message.get_content_charset() or 'utf-8'
+                        content = payload.decode(charset, errors='replace')
+                        if message.get_content_type() == "text/html":
+                            body_html = content
+                        else:
+                            body_text = content
+                    except: pass
+
+                if body_html:
+                    mail.HTMLBody = body_html
+                elif body_text:
+                    mail.Body = body_text
+                
+                mail.MessageClass = "IPM.Note"
+                try:
+                    mail.UnRead = False
+                except Exception:
+                    pass
+                
+                # Set MAPI Properties BEFORE Save to effectively clear Draft status
+                set_item_properties(mail, date_val, sender_name=sender_name, sender_email=sender_email,
+                                    references=references, in_reply_to=in_reply_to)
+                
+                # Save & Move (forces Outlook to materialize and clear MSGFLAG_UNSENT)
+                mail.Save()
+                if temp_folder != target_folder:
+                    mail.Move(target_folder)
+                
+                count = i + 1
+                total_processed += 1
+                
+                # Report progress
+                if progress_callback:
+                    current_done = count - file_start_at
+                    total_to_do = limit if limit else (total_messages - file_start_at)
+                    progress_callback(current_done, total_to_do, f"Fichier {file_idx+1}/{len(mbox_files)} : {os.path.basename(mbox_file)} - {count}/{total_messages} msg")
+                elif progress_bar:
+                    progress_bar.update(1)
+                elif count % 100 == 0:
+                    elapsed = time.time() - start_time
+                    rate = total_processed / elapsed if elapsed > 0 else 0
+                    logging.info(f"Processed {count}/{total_messages} messages... ({rate:.2f} msgs/sec)")
+                
+                # Periodic save state
+                if count % 100 == 0:
+                    save_state(count, processed_files, current_file, seen_message_ids)
+                
+                # Throttle slightly to avoid resource exhaustion
+                if count % 10 == 0:
+                    time.sleep(0.1)
+                    
+            except Exception as e:
+                total_errors += 1
+                logging.error(f"Error processing message {i}: {e}")
+                if total_errors > 500:
+                    logging.error("Too many errors, stopping migration process.")
+                    break
+                continue
+            finally:
+                mail = None
+
+        if progress_bar:
+            progress_bar.close()
+            
+        if _shutdown_requested:
+            break
+            
+        # File completed successfully
+        processed_files.append(mbox_file_abs)
+        current_file = None
+        start_at = 0
+        save_state(0, processed_files, current_file, seen_message_ids)
+        logging.info(f"Completed MBOX file: {os.path.basename(mbox_file)}")
+
+    # 9. Final Cleanup and Logging
     try:
         if temp_folder.Items.Count == 0:
             temp_folder.Delete()
     except: pass
 
-    # Close progress bar
-    if progress_bar:
-        progress_bar.close()
-
     attachments_temp_dir.cleanup()
+    
+    if not _shutdown_requested:
+        # Clear state file upon clean successful completion of all files
+        if os.path.exists(STATE_FILE):
+            try:
+                os.remove(STATE_FILE)
+            except: pass
+        logging.info(f"Migration completed successfully!")
+    else:
+        logging.info(f"Migration suspended.")
 
-    save_state(count)
-    logging.info(f"Migration completed!")
-    logging.info(f"Total messages processed: {count}")
-    logging.info(f"Duplicates skipped: {duplicates_skipped}")
-    logging.info(f"Errors: {errors}")
-    logging.info(f"PST: {pst_abs_path}")
+    logging.info(f"Total messages migrated: {total_processed}")
+    logging.info(f"Duplicates skipped: {total_duplicates}")
+    logging.info(f"Errors encountered: {total_errors}")
+    logging.info(f"PST File: {pst_abs_path}")
 
+# ==============================================================================
+# GUI - TKINTER INTERFACE
+# ==============================================================================
+
+class TextHandler(logging.Handler):
+    """Custom logging handler to redirect logging to a Tkinter Text widget."""
+    def __init__(self, text_widget):
+        super().__init__()
+        self.text_widget = text_widget
+
+    def emit(self, record):
+        msg = self.format(record)
+        def append():
+            self.text_widget.configure(state='normal')
+            self.text_widget.insert('end', msg + '\n')
+            self.text_widget.configure(state='disabled')
+            self.text_widget.yview('end')
+        # Thread-safe appending using the after() method
+        self.text_widget.after(0, append)
+
+def run_gui():
+    """Build and launch the Tkinter Graphical User Interface."""
+    if not GUI_AVAILABLE:
+        print("Error: Tkinter library is not available. Cannot run in GUI mode.")
+        sys.exit(1)
+        
+    window = tk.Tk()
+    window.title("Migration MBOX Gmail vers Outlook PST")
+    window.geometry("850x650")
+    window.configure(bg="#1e1e24")
+    
+    # Style styling
+    style = ttk.Style()
+    style.theme_use('clam')
+    
+    style.configure(".", background="#1e1e24", foreground="#ffffff")
+    style.configure("TFrame", background="#1e1e24")
+    style.configure("TLabel", background="#1e1e24", foreground="#ffffff", font=("Segoe UI", 10))
+    style.configure("TButton", background="#5c6bc0", foreground="#ffffff", font=("Segoe UI", 10, "bold"), borderwidth=0)
+    style.map("TButton", background=[("active", "#3f51b5"), ("disabled", "#555555")])
+    style.configure("TCheckbutton", background="#1e1e24", foreground="#ffffff")
+    style.configure("Horizontal.TProgressbar", thickness=15, troughcolor="#2a2a35", background="#00acc1")
+    style.configure("TEntry", fieldbackground="#2a2a35", foreground="#ffffff", insertcolor="#ffffff", bordercolor="#424250", lightcolor="#424250")
+    
+    # Title Frame
+    header_frame = tk.Frame(window, bg="#2a2a35", height=80)
+    header_frame.pack(fill="x", padx=0, pady=0)
+    
+    header_label = tk.Label(header_frame, text="Migration Gmail (MBOX) vers Outlook PST", 
+                            font=("Segoe UI", 16, "bold"), fg="#ffffff", bg="#2a2a35")
+    header_label.pack(anchor="w", padx=20, pady=(15, 2))
+    
+    subtitle_label = tk.Label(header_frame, text="Convertisseur haute performance avec support des catégories et des dossiers", 
+                              font=("Segoe UI", 9, "italic"), fg="#b0bec5", bg="#2a2a35")
+    subtitle_label.pack(anchor="w", padx=20, pady=(0, 15))
+    
+    # Form layout
+    form_frame = ttk.Frame(window, padding=20)
+    form_frame.pack(fill="x")
+    
+    # Row 0: MBOX Selection
+    ttk.Label(form_frame, text="Source MBOX (Fichier ou Dossier) :").grid(row=0, column=0, sticky="w", pady=6)
+    mbox_path_var = tk.StringVar()
+    mbox_entry = ttk.Entry(form_frame, textvariable=mbox_path_var, width=65)
+    mbox_entry.grid(row=0, column=1, padx=10, pady=6)
+    
+    def select_mbox_file():
+        path = filedialog.askopenfilename(filetypes=[("Fichiers MBOX", "*.mbox"), ("Tous les fichiers", "*.*")])
+        if path: mbox_path_var.set(path)
+        
+    def select_mbox_dir():
+        path = filedialog.askdirectory()
+        if path: mbox_path_var.set(path)
+        
+    mbox_btn_frame = ttk.Frame(form_frame)
+    mbox_btn_frame.grid(row=0, column=2, sticky="w", pady=6)
+    ttk.Button(mbox_btn_frame, text="Fichier...", command=select_mbox_file, width=8).pack(side="left", padx=2)
+    ttk.Button(mbox_btn_frame, text="Dossier...", command=select_mbox_dir, width=8).pack(side="left", padx=2)
+    
+    # Row 1: PST Selection
+    ttk.Label(form_frame, text="Fichier PST de destination :").grid(row=1, column=0, sticky="w", pady=6)
+    pst_path_var = tk.StringVar()
+    pst_entry = ttk.Entry(form_frame, textvariable=pst_path_var, width=65)
+    pst_entry.grid(row=1, column=1, padx=10, pady=6)
+    
+    def select_pst():
+        path = filedialog.asksaveasfilename(defaultextension=".pst", filetypes=[("Fichiers PST Outlook", "*.pst"), ("Tous les fichiers", "*.*")])
+        if path: pst_path_var.set(path)
+        
+    ttk.Button(form_frame, text="Parcourir...", command=select_pst, width=17).grid(row=1, column=2, sticky="w", pady=6)
+    
+    # Row 2: Target Folder Name
+    ttk.Label(form_frame, text="Dossier racine cible dans Outlook :").grid(row=2, column=0, sticky="w", pady=6)
+    folder_var = tk.StringVar(value="Gmail Archive")
+    folder_entry = ttk.Entry(form_frame, textvariable=folder_var, width=30)
+    folder_entry.grid(row=2, column=1, sticky="w", padx=10, pady=6)
+    
+    # Row 3: Session options
+    options_frame = ttk.Frame(form_frame)
+    options_frame.grid(row=3, column=1, columnspan=2, sticky="w", pady=6)
+    
+    resume_var = tk.BooleanVar(value=True)
+    ttk.Checkbutton(options_frame, text="Reprendre la migration interrompue (Resume)", variable=resume_var).pack(side="left", padx=(10, 20))
+    
+    ttk.Label(options_frame, text="Limite de messages (optionnelle) :").pack(side="left")
+    limit_var = tk.StringVar()
+    limit_entry = ttk.Entry(options_frame, textvariable=limit_var, width=10)
+    limit_entry.pack(side="left", padx=10)
+    
+    # Execution Log frame
+    log_frame = tk.Frame(window, bg="#111115")
+    log_frame.pack(fill="both", expand=True, padx=20, pady=10)
+    
+    log_label = tk.Label(log_frame, text="Journal de migration (migration.log)", font=("Segoe UI", 9, "bold"), fg="#b0bec5", bg="#111115")
+    log_label.pack(anchor="w", padx=15, pady=5)
+    
+    log_text = tk.Text(log_frame, bg="#111115", fg="#cfd8dc", font=("Consolas", 9), state="disabled", wrap="word", borderwidth=0)
+    log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+    
+    # Redirect root logger calls to the Tkinter Text widget
+    text_handler = TextHandler(log_text)
+    text_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logging.getLogger().addHandler(text_handler)
+    
+    # Progress Indicators
+    progress_frame = ttk.Frame(window, padding=20)
+    progress_frame.pack(fill="x")
+    
+    status_var = tk.StringVar(value="Prêt à démarrer la migration.")
+    status_label = ttk.Label(progress_frame, textvariable=status_var, font=("Segoe UI", 9, "bold"), foreground="#b0bec5")
+    status_label.pack(anchor="w", pady=(0, 4))
+    
+    progress_var = tk.DoubleVar()
+    progress_bar = ttk.Progressbar(progress_frame, variable=progress_var, maximum=100, style="Horizontal.TProgressbar")
+    progress_bar.pack(fill="x", pady=5)
+    
+    # Actions
+    btn_frame = ttk.Frame(progress_frame)
+    btn_frame.pack(pady=10)
+    
+    btn_start = ttk.Button(btn_frame, text="DÉMARRER LA MIGRATION", width=25)
+    btn_start.pack(side="left", padx=10)
+    
+    btn_stop = ttk.Button(btn_frame, text="METTRE EN PAUSE / ARRÊTER", state="disabled", width=25)
+    btn_stop.pack(side="left", padx=10)
+    
+    # Thread Callback updates
+    def update_progress(current, total, status_msg):
+        def ui_update():
+            pct = (current / total) * 100 if total > 0 else 0
+            progress_var.set(pct)
+            status_var.set(f"{status_msg} ({pct:.1f}%)")
+        window.after(0, ui_update)
+        
+    def run_migration_process():
+        global _shutdown_requested
+        _shutdown_requested = False
+        
+        mbox_path = mbox_path_var.get().strip()
+        pst_path = pst_path_var.get().strip()
+        folder_name = folder_var.get().strip()
+        resume = resume_var.get()
+        
+        limit_val = None
+        if limit_var.get().strip():
+            try:
+                limit_val = int(limit_var.get().strip())
+            except ValueError:
+                window.after(0, lambda: messagebox.showerror("Erreur de Saisie", "La limite de messages doit être un entier numérique."))
+                reset_inputs()
+                return
+
+        if not mbox_path or not pst_path:
+            window.after(0, lambda: messagebox.showerror("Champs Requis", "Veuillez spécifier le fichier/dossier MBOX et le fichier PST."))
+            reset_inputs()
+            return
+            
+        logging.info("Starting background migration thread...")
+        
+        try:
+            mbox_to_pst(mbox_path, pst_path, folder_name, resume, limit_val, progress_callback=update_progress)
+        except Exception as thr_err:
+            logging.critical(f"Fatal migration error: {thr_err}", exc_info=True)
+            window.after(0, lambda: messagebox.showerror("Erreur Critique", f"Une erreur critique est survenue dans la migration :\n{thr_err}"))
+            
+        def clean_up_finished():
+            btn_start.configure(state="normal")
+            btn_stop.configure(state="disabled")
+            mbox_entry.configure(state="normal")
+            pst_entry.configure(state="normal")
+            folder_entry.configure(state="normal")
+            limit_entry.configure(state="normal")
+            
+            if _shutdown_requested:
+                status_var.set("Migration suspendue. Progression sauvegardée.")
+                messagebox.showinfo("Migration suspendue", "La migration a été arrêtée proprement. Vous pourrez la reprendre au même endroit.")
+            else:
+                progress_var.set(100)
+                status_var.set("Migration complétée avec succès !")
+                messagebox.showinfo("Migration Terminée", "Félicitations, la conversion de vos messages est terminée !")
+                
+        window.after(0, clean_up_finished)
+        
+    def reset_inputs():
+        btn_start.configure(state="normal")
+        btn_stop.configure(state="disabled")
+        mbox_entry.configure(state="normal")
+        pst_entry.configure(state="normal")
+        folder_entry.configure(state="normal")
+        limit_entry.configure(state="normal")
+        status_var.set("Prêt.")
+        
+    def handle_start():
+        btn_start.configure(state="disabled")
+        btn_stop.configure(state="normal")
+        mbox_entry.configure(state="disabled")
+        pst_entry.configure(state="disabled")
+        folder_entry.configure(state="disabled")
+        limit_entry.configure(state="disabled")
+        
+        status_var.set("Préparation de la migration...")
+        progress_var.set(0)
+        
+        if not THREADING_AVAILABLE:
+            messagebox.showerror("Threading non disponible", "Le package threading est manquant, impossible de lancer le processus.")
+            reset_inputs()
+            return
+            
+        thread = threading.Thread(target=run_migration_process, daemon=True)
+        thread.start()
+        
+    def handle_stop():
+        global _shutdown_requested
+        _shutdown_requested = True
+        status_var.set("Demande d'interruption envoyée...")
+        btn_stop.configure(state="disabled")
+        
+    btn_start.configure(command=handle_start)
+    btn_stop.configure(command=handle_stop)
+    
+    # Center window
+    window.update_idletasks()
+    w = window.winfo_width()
+    h = window.winfo_height()
+    x = (window.winfo_screenwidth() // 2) - (w // 2)
+    y = (window.winfo_screenheight() // 2) - (h // 2)
+    window.geometry(f'{w}x{h}+{x}+{y}')
+    
+    window.mainloop()
+
+# ==============================================================================
+# ENTRY POINT
+# ==============================================================================
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="Migration MBOX Gmail vers Outlook PST avec Catégories")
-    parser.add_argument("mbox", help="Chemin du fichier .mbox")
-    parser.add_argument("pst", help="Chemin du fichier .pst de sortie")
-    parser.add_argument("--folder", default="Gmail Archive", help="Nom du dossier cible dans Outlook")
-    parser.add_argument("--no-resume", action="store_false", dest="resume", help="Ne pas reprendre la migration précédente")
-    parser.add_argument("--limit", type=int, default=None, help="Limiter le nombre de messages à traiter (pour test)")
-    
-    args = parser.parse_args()
-    mbox_to_pst(args.mbox, args.pst, args.folder, args.resume, args.limit)
+    # If no arguments provided, or if --gui argument is present, launch the graphical UI
+    if len(sys.argv) == 1:
+        run_gui()
+    else:
+        import argparse
+        parser = argparse.ArgumentParser(description="Migration MBOX Gmail vers Outlook PST avec Catégories")
+        parser.add_argument("mbox", nargs="?", default=None, help="Chemin du fichier .mbox ou dossier de fichiers .mbox")
+        parser.add_argument("pst", nargs="?", default=None, help="Chemin du fichier .pst de destination")
+        parser.add_argument("--folder", default="Gmail Archive", help="Nom du dossier racine cible dans Outlook")
+        parser.add_argument("--no-resume", action="store_false", dest="resume", help="Ne pas reprendre la migration précédente")
+        parser.add_argument("--limit", type=int, default=None, help="Limiter le nombre de messages à traiter (pour test)")
+        parser.add_argument("--gui", action="store_true", help="Lancer l'interface graphique utilisateur")
+        
+        args = parser.parse_args()
+        
+        if args.gui or (not args.mbox or not args.pst):
+            run_gui()
+        else:
+            mbox_to_pst(args.mbox, args.pst, args.folder, args.resume, args.limit)
